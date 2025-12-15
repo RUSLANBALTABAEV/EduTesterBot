@@ -3,7 +3,7 @@
 Обработчики для моих курсов.
 """
 from datetime import datetime
-from aiogram import Router, types
+from aiogram import Router, types, F
 from sqlalchemy import select, and_
 
 from db.models import User, Course, CourseEnrollment

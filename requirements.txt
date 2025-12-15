@@ -4,3 +4,5 @@ SQLAlchemy
 aiosqlite
 apscheduler
 aiogram-i18n
+pandas
+openpyxl
