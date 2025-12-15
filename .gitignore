@@ -1,0 +1,86 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+
+# pyenv / pipenv / PEP 582
+.python-version
+Pipfile.lock
+__pypackages__/
+
+# Django / Flask / databases
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+
+# Sphinx documentation
+docs/_build/
+
+# PyInstaller
+*.spec
+
+# dotenv / env files / secrets
+.env
+.env.*
+secrets.*
+credentials.json
+credentials.yaml
+config.ini
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc
+*.log
+logs/
+tmp/
+temp/
