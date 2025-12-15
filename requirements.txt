@@ -1,0 +1,6 @@
+aiogram
+python-dotenv
+SQLAlchemy
+aiosqlite
+apscheduler
+aiogram-i18n
