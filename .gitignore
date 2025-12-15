@@ -62,6 +62,7 @@ docs/_build/
 # dotenv / env files / secrets
 .env
 .env.*
+config/.env
 secrets.*
 credentials.json
 credentials.yaml
