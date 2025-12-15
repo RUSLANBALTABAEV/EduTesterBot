@@ -1,5 +1,17 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+config/__pycache__/
+config/__pycache__/*
+db/__pycache__/
+db/__pycache__/*
+fsm/__pycache__/
+fsm/__pycache__/*
+handlers/__pycache__/
+handlers/__pycache__/*
+i18n/__pycache__/
+i18n/__pycache__/*
+keyboard/__pycache__/
+keyboard/__pycache__/*
 *.py[cod]
 *$py.class
 
