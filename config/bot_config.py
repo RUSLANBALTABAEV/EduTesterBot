@@ -1,3 +1,4 @@
+# config/bot_config.py
 """Конфигурация бота."""
 from dotenv import dotenv_values
 
