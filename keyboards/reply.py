@@ -59,18 +59,12 @@ def main_menu(user_id: int, lang: str = "ru") -> ReplyKeyboardMarkup:
     if _is_admin(user_id):
         # Кнопки для администратора
         builder.row(
-            KeyboardButton(text=get_text("btn_admin_certificates", lang))
-        )
-        builder.row(
             KeyboardButton(text=get_text("btn_admin_panel", lang))
         )
     else:
         # Кнопки для обычного пользователя
         builder.row(
             KeyboardButton(text=get_text("btn_my_courses", lang))
-        )
-        builder.row(
-            KeyboardButton(text=get_text("btn_certificates", lang))
         )
 
     builder.row(KeyboardButton(text=get_text("btn_language", lang)))
@@ -98,71 +92,3 @@ def language_keyboard() -> InlineKeyboardMarkup:
         ]
     )
     return keyboard
-
-
-def admin_main_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """
-    Создать главную клавиатуру администратора.
-    
-    Args:
-        lang: Код языка интерфейса
-        
-    Returns:
-        InlineKeyboardMarkup с кнопками администратора
-    """
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_show_users", lang),
-                    callback_data="show_users"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_manage_courses", lang),
-                    callback_data="manage_courses"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_add_course", lang),
-                    callback_data="add_course"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_add_certificate", lang),
-                    callback_data="add_certificate"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_delete_all_users", lang),
-                    callback_data="delete_all_users"
-                )
-            ],
-        ]
-    )
-
-
-def admin_back_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """
-    Создать клавиатуру возврата в меню администратора.
-    
-    Args:
-        lang: Код языка интерфейса
-        
-    Returns:
-        InlineKeyboardMarkup с кнопкой возврата
-    """
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_admin_back", lang),
-                    callback_data="admin_menu"
-                )
-            ]
-        ]
-    )

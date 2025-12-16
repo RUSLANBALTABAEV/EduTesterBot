@@ -1,7 +1,7 @@
 # handlers/admin.py
 """
 Обработчики административной панели бота.
-Управление пользователями, курсами и сертификатами.
+Управление пользователями, курсами.
 """
 from datetime import datetime
 
@@ -12,16 +12,14 @@ from aiogram.types import (
     CallbackQuery,
     Message
 )
-from aiogram.enums import ContentType
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from sqlalchemy import select
 
-from db.models import User, Course, Certificate
+from db.models import User, Course
 from db.session import async_session
 from config.bot_config import ADMIN_ID
-from keyboards.reply import admin_main_keyboard, admin_back_keyboard
-from i18n.locales import get_text, MIN_CERTIFICATE_TITLE_LENGTH
+from i18n.locales import get_text
 
 admin_router = Router()
 
@@ -66,14 +64,6 @@ class EditCourseFSM(StatesGroup):
     end_date = State()
 
 
-class CertificateFSM(StatesGroup):
-    """Состояния для выдачи сертификата."""
-
-    user_selector = State()
-    title = State()
-    file = State()
-
-
 # ============ Админ-меню ============
 @admin_router.message(
     F.text.in_([
@@ -95,9 +85,18 @@ async def admin_main_menu(message: Message) -> None:
         return
 
     lang = await get_user_language(message.from_user.id)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👥 Список пользователей", callback_data="show_users")],
+        [InlineKeyboardButton(text="📚 Управление курсами", callback_data="manage_courses")],
+        [InlineKeyboardButton(text="➕ Добавить курс", callback_data="add_course")],
+        [InlineKeyboardButton(text="🗑 Удалить всех пользователей", callback_data="delete_all_users")],
+        [InlineKeyboardButton(text="📋 Управление тестами", callback_data="manage_tests")]
+    ])
+    
     await message.answer(
-        get_text("admin_main_menu", lang),
-        reply_markup=admin_main_keyboard(lang)
+        "👤 Главное меню администратора:",
+        reply_markup=keyboard
     )
 
 
@@ -116,21 +115,26 @@ async def back_to_admin_menu(
     await state.clear()
 
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
 
-    lang = await get_user_language(callback.from_user.id)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👥 Список пользователей", callback_data="show_users")],
+        [InlineKeyboardButton(text="📚 Управление курсами", callback_data="manage_courses")],
+        [InlineKeyboardButton(text="➕ Добавить курс", callback_data="add_course")],
+        [InlineKeyboardButton(text="🗑 Удалить всех пользователей", callback_data="delete_all_users")],
+        [InlineKeyboardButton(text="📋 Управление тестами", callback_data="manage_tests")]
+    ])
 
     try:
         await callback.message.edit_text(
-            get_text("admin_main_menu", lang),
-            reply_markup=admin_main_keyboard(lang)
+            "👤 Главное меню администратора:",
+            reply_markup=keyboard
         )
     except Exception:
         await callback.message.answer(
-            get_text("admin_main_menu", lang),
-            reply_markup=admin_main_keyboard(lang)
+            "👤 Главное меню администратора:",
+            reply_markup=keyboard
         )
 
     await callback.answer()
@@ -146,11 +150,8 @@ async def show_users(callback: CallbackQuery) -> None:
         callback: Callback query
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
-
-    lang = await get_user_language(callback.from_user.id)
 
     async with async_session() as session:
         result = await session.execute(select(User))
@@ -159,20 +160,24 @@ async def show_users(callback: CallbackQuery) -> None:
     if not users:
         try:
             await callback.message.edit_text(
-                get_text("no_users", lang),
-                reply_markup=admin_back_keyboard(lang)
+                "📭 Пользователей пока нет.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+                ])
             )
         except Exception:
             await callback.message.answer(
-                get_text("no_users", lang),
-                reply_markup=admin_back_keyboard(lang)
+                "📭 Пользователей пока нет.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+                ])
             )
         await callback.answer()
         return
 
     for user in users:
-        user_name = user.name or get_text("without_name", lang)
-        phone = user.phone or get_text("not_specified", lang)
+        user_name = user.name or "Без имени"
+        phone = user.phone or "не указан"
         text = (
             f"👤 {user_name}\n"
             f"🆔 Telegram ID: {user.user_id}\n"
@@ -184,7 +189,7 @@ async def show_users(callback: CallbackQuery) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=get_text("btn_delete", lang),
+                        text="🗑 Удалить",
                         callback_data=f"delete_user:{user.id}"
                     )
                 ]
@@ -208,8 +213,10 @@ async def show_users(callback: CallbackQuery) -> None:
             )
 
     await callback.message.answer(
-        get_text("btn_admin_back", lang),
-        reply_markup=admin_back_keyboard(lang)
+        "🔙 Назад",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+        ])
     )
     await callback.answer()
 
@@ -223,48 +230,33 @@ async def delete_user(callback: CallbackQuery) -> None:
         callback: Callback query с ID пользователя
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
 
-    lang = await get_user_language(callback.from_user.id)
     user_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
         user = await session.get(User, user_id)
         if not user:
-            await callback.answer(
-                get_text("user_not_found", lang),
-                show_alert=True
-            )
+            await callback.answer("⚠️ Пользователь не найден", show_alert=True)
             return
 
-        username = user.name or get_text("without_name", lang)
-        telegram_id = user.user_id or get_text("unknown", lang)
+        username = user.name or "Без имени"
+        telegram_id = user.user_id or "неизвестный"
 
         await session.delete(user)
         await session.commit()
 
     try:
-        message_text = get_text(
-            "user_deleted",
-            lang,
-            name=username,
-            telegram_id=telegram_id
-        )
         await callback.message.answer(
-            message_text,
-            reply_markup=admin_back_keyboard(lang)
+            f"🗑 Пользователь «{username}» (TG ID: {telegram_id}) удалён.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+            ])
         )
         await callback.message.delete()
     except Exception:
-        message_text = get_text(
-            "user_deleted",
-            lang,
-            name=username,
-            telegram_id=telegram_id
-        )
-        await callback.answer(message_text, show_alert=True)
+        await callback.answer(f"🗑 Пользователь «{username}» удалён.", show_alert=True)
 
     await callback.answer()
 
@@ -278,21 +270,15 @@ async def delete_all_users(callback: CallbackQuery) -> None:
         callback: Callback query
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
-
-    lang = await get_user_language(callback.from_user.id)
 
     async with async_session() as session:
         result = await session.execute(select(User))
         users = result.scalars().all()
 
         if not users:
-            await callback.answer(
-                get_text("no_users_to_delete", lang),
-                show_alert=True
-            )
+            await callback.answer("⚠️ Пользователей нет.", show_alert=True)
             return
 
         for user in users:
@@ -301,15 +287,14 @@ async def delete_all_users(callback: CallbackQuery) -> None:
 
     try:
         await callback.message.answer(
-            get_text("all_users_deleted", lang),
-            reply_markup=admin_back_keyboard(lang)
+            "🗑 Все пользователи удалены.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+            ])
         )
         await callback.message.delete()
     except Exception:
-        await callback.answer(
-            get_text("all_users_deleted", lang),
-            show_alert=True
-        )
+        await callback.answer("🗑 Все пользователи удалены.", show_alert=True)
 
     await callback.answer()
 
@@ -324,11 +309,8 @@ async def manage_courses(callback: CallbackQuery) -> None:
         callback: Callback query
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
-
-    lang = await get_user_language(callback.from_user.id)
 
     async with async_session() as session:
         result = await session.execute(select(Course))
@@ -337,13 +319,17 @@ async def manage_courses(callback: CallbackQuery) -> None:
     if not courses:
         try:
             await callback.message.edit_text(
-                get_text("no_courses", lang),
-                reply_markup=admin_back_keyboard(lang)
+                "📭 Курсов пока нет.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+                ])
             )
         except Exception:
             await callback.message.answer(
-                get_text("no_courses", lang),
-                reply_markup=admin_back_keyboard(lang)
+                "📭 Курсов пока нет.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+                ])
             )
         await callback.answer()
         return
@@ -352,30 +338,30 @@ async def manage_courses(callback: CallbackQuery) -> None:
         start_date = (
             course.start_date.strftime("%d.%m.%Y")
             if course.start_date
-            else get_text("not_indicated", lang)
+            else "не указана"
         )
         end_date = (
             course.end_date.strftime("%d.%m.%Y")
             if course.end_date
-            else get_text("not_indicated", lang)
+            else "не указана"
         )
 
         text = (
             f"📘 <b>{course.title}</b>\n\n"
-            f"{course.description or get_text('no_description', lang)}\n\n"
-            f"{get_text('price', lang, price=course.price)}\n"
-            f"{get_text('dates', lang, start=start_date, end=end_date)}"
+            f"{course.description or 'Без описания'}\n\n"
+            f"💰 Цена: {course.price} сум.\n"
+            f"📅 Даты: {start_date} — {end_date}"
         )
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=get_text("btn_edit", lang),
+                        text="✏️ Редактировать",
                         callback_data=f"edit_course:{course.id}"
                     ),
                     InlineKeyboardButton(
-                        text=get_text("btn_delete", lang),
+                        text="🗑 Удалить",
                         callback_data=f"delete_course:{course.id}"
                     )
                 ]
@@ -389,8 +375,10 @@ async def manage_courses(callback: CallbackQuery) -> None:
         )
 
     await callback.message.answer(
-        get_text("btn_admin_back", lang),
-        reply_markup=admin_back_keyboard(lang)
+        "🔙 Назад",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+        ])
     )
     await callback.answer()
 
@@ -404,20 +392,15 @@ async def delete_course(callback: CallbackQuery) -> None:
         callback: Callback query с ID курса
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
 
-    lang = await get_user_language(callback.from_user.id)
     course_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
         course = await session.get(Course, course_id)
         if not course:
-            await callback.answer(
-                get_text("course_not_found", lang),
-                show_alert=True
-            )
+            await callback.answer("⚠️ Курс не найден", show_alert=True)
             return
 
         course_title = course.title
@@ -426,15 +409,14 @@ async def delete_course(callback: CallbackQuery) -> None:
 
     try:
         await callback.message.answer(
-            get_text("course_deleted", lang, title=course_title),
-            reply_markup=admin_back_keyboard(lang)
+            f"🗑 Курс «{course_title}» удалён.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+            ])
         )
         await callback.message.delete()
     except Exception:
-        await callback.answer(
-            get_text("course_deleted", lang, title=course_title),
-            show_alert=True
-        )
+        await callback.answer(f"🗑 Курс «{course_title}» удалён.", show_alert=True)
 
     await callback.answer()
 
@@ -453,21 +435,18 @@ async def add_course_start(
         state: FSM контекст
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
-
-    lang = await get_user_language(callback.from_user.id)
 
     await state.set_state(AddCourseFSM.title)
 
     try:
         await callback.message.edit_text(
-            get_text("enter_course_title", lang)
+            "➕ Введите название нового курса:"
         )
     except Exception:
         await callback.message.answer(
-            get_text("enter_course_title", lang)
+            "➕ Введите название нового курса:"
         )
 
     await callback.answer()
@@ -485,8 +464,6 @@ async def add_course_title(message: Message, state: FSMContext) -> None:
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
-
     # Проверяем уникальность названия
     async with async_session() as session:
         result = await session.execute(
@@ -495,12 +472,12 @@ async def add_course_title(message: Message, state: FSMContext) -> None:
         existing = result.scalar_one_or_none()
 
         if existing:
-            await message.answer(get_text("course_title_exists", lang))
+            await message.answer("⚠️ Курс с таким названием уже существует!")
             return
 
     await state.update_data(title=message.text.strip())
     await state.set_state(AddCourseFSM.description)
-    await message.answer(get_text("enter_course_description", lang))
+    await message.answer("Введите описание курса:")
 
 
 @admin_router.message(AddCourseFSM.description)
@@ -518,10 +495,9 @@ async def add_course_description(
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
     await state.update_data(description=message.text.strip())
     await state.set_state(AddCourseFSM.price)
-    await message.answer(get_text("enter_course_price", lang))
+    await message.answer("Введите цену курса (число):")
 
 
 @admin_router.message(AddCourseFSM.price, F.text.regexp(r"^\d+$"))
@@ -536,10 +512,9 @@ async def add_course_price(message: Message, state: FSMContext) -> None:
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
     await state.update_data(price=int(message.text.strip()))
     await state.set_state(AddCourseFSM.start_date)
-    await message.answer(get_text("enter_start_date", lang))
+    await message.answer("Введите дату начала курса (ДД.ММ.ГГГГ):")
 
 
 @admin_router.message(AddCourseFSM.start_date)
@@ -557,20 +532,18 @@ async def add_course_start_date(
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
-
     try:
         start_date = datetime.strptime(
             message.text.strip(),
             "%d.%m.%Y"
-        ).date()
+        )
     except ValueError:
-        await message.answer(get_text("invalid_date_format", lang))
+        await message.answer("⚠️ Неверный формат даты. Введите снова (ДД.ММ.ГГГГ):")
         return
 
     await state.update_data(start_date=start_date)
     await state.set_state(AddCourseFSM.end_date)
-    await message.answer(get_text("enter_end_date", lang))
+    await message.answer("Введите дату окончания курса (ДД.ММ.ГГГГ):")
 
 
 @admin_router.message(AddCourseFSM.end_date)
@@ -588,20 +561,19 @@ async def add_course_end_date(
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
     data = await state.get_data()
 
     try:
         end_date = datetime.strptime(
             message.text.strip(),
             "%d.%m.%Y"
-        ).date()
+        )
     except ValueError:
-        await message.answer(get_text("invalid_date_format", lang))
+        await message.answer("⚠️ Неверный формат даты. Введите снова (ДД.ММ.ГГГГ):")
         return
 
     if end_date < data["start_date"]:
-        await message.answer(get_text("end_date_before_start", lang))
+        await message.answer("⚠️ Дата окончания не может быть раньше даты начала.")
         return
 
     # Создаем новый курс
@@ -617,8 +589,10 @@ async def add_course_end_date(
         await session.commit()
 
     await message.answer(
-        get_text("course_added", lang, title=data["title"]),
-        reply_markup=admin_back_keyboard(lang)
+        f"✅ Курс «{data['title']}» добавлен!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+        ])
     )
     await state.clear()
 
@@ -637,20 +611,15 @@ async def edit_course_start(
         state: FSM контекст
     """
     if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
+        await callback.answer("⛔ Нет доступа", show_alert=True)
         return
 
-    lang = await get_user_language(callback.from_user.id)
     course_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
         course = await session.get(Course, course_id)
         if not course:
-            await callback.answer(
-                get_text("course_not_found", lang),
-                show_alert=True
-            )
+            await callback.answer("⚠️ Курс не найден", show_alert=True)
             return
 
     await state.update_data(course_id=course_id)
@@ -740,15 +709,13 @@ async def edit_course_start_date(
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
-
     try:
         start_date = datetime.strptime(
             message.text.strip(),
             "%d.%m.%Y"
-        ).date()
+        )
     except ValueError:
-        await message.answer(get_text("invalid_date_format", lang))
+        await message.answer("⚠️ Неверный формат даты. Введите снова (ДД.ММ.ГГГГ):")
         return
 
     await state.update_data(new_start_date=start_date)
@@ -773,20 +740,19 @@ async def edit_course_end_date(
     if message.from_user.id != ADMIN_ID:
         return
 
-    lang = await get_user_language(message.from_user.id)
     data = await state.get_data()
 
     try:
         end_date = datetime.strptime(
             message.text.strip(),
             "%d.%m.%Y"
-        ).date()
+        )
     except ValueError:
-        await message.answer(get_text("invalid_date_format", lang))
+        await message.answer("⚠️ Неверный формат даты. Введите снова (ДД.ММ.ГГГГ):")
         return
 
     if end_date < data["new_start_date"]:
-        await message.answer(get_text("end_date_before_start", lang))
+        await message.answer("⚠️ Дата окончания не может быть раньше даты начала.")
         return
 
     # Обновляем курс в базе данных
@@ -794,7 +760,7 @@ async def edit_course_end_date(
     async with async_session() as session:
         course = await session.get(Course, course_id)
         if not course:
-            await message.answer(get_text("course_not_found", lang))
+            await message.answer("⚠️ Курс не найден")
             await state.clear()
             return
 
@@ -808,7 +774,7 @@ async def edit_course_end_date(
         existing_course = result.scalar_one_or_none()
 
         if existing_course:
-            await message.answer(get_text("course_title_exists", lang))
+            await message.answer("⚠️ Курс с таким названием уже существует!")
             await state.clear()
             return
 
@@ -823,290 +789,9 @@ async def edit_course_end_date(
 
     await message.answer(
         f"✅ Курс «{data['new_title']}» успешно обновлён!",
-        reply_markup=admin_back_keyboard(lang)
-    )
-    await state.clear()
-
-
-# ============ Выдача сертификатов ============
-@admin_router.callback_query(F.data == "add_certificate")
-async def add_certificate_start(
-    callback: CallbackQuery,
-    state: FSMContext
-) -> None:
-    """
-    Начать процесс выдачи сертификата.
-
-    Args:
-        callback: Callback query
-        state: FSM контекст
-    """
-    if callback.from_user.id != ADMIN_ID:
-        lang = await get_user_language(callback.from_user.id)
-        await callback.answer(get_text("no_access", lang), show_alert=True)
-        return
-
-    lang = await get_user_language(callback.from_user.id)
-
-    # Получаем список всех пользователей
-    async with async_session() as session:
-        result = await session.execute(select(User))
-        users = result.scalars().all()
-
-    if not users:
-        await callback.answer(
-            get_text("no_users", lang),
-            show_alert=True
-        )
-        return
-
-    # Создаем клавиатуру с пользователями
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=(
-                        f"{user.name or 'ID: ' + str(user.id)} "
-                        f"({user.phone or 'без телефона'})"
-                    ),
-                    callback_data=f"cert_user:{user.id}"
-                )
-            ]
-            for user in users
-        ] + [
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_back", lang),
-                    callback_data="admin_menu"
-                )
-            ]
-        ]
-    )
-
-    try:
-        await callback.message.edit_text(
-            "👥 Выберите пользователя для выдачи сертификата:",
-            reply_markup=keyboard
-        )
-    except Exception:
-        await callback.message.answer(
-            "👥 Выберите пользователя для выдачи сертификата:",
-            reply_markup=keyboard
-        )
-
-    await state.set_state(CertificateFSM.user_selector)
-    await callback.answer()
-
-
-@admin_router.callback_query(
-    F.data.startswith("cert_user:"),
-    CertificateFSM.user_selector
-)
-async def certificate_user_selected(
-    callback: CallbackQuery,
-    state: FSMContext
-) -> None:
-    """
-    Обработать выбор пользователя для сертификата.
-
-    Args:
-        callback: Callback query с ID пользователя
-        state: FSM контекст
-    """
-    if callback.from_user.id != ADMIN_ID:
-        return
-
-    user_id = int(callback.data.split(":")[1])
-
-    # Сохраняем ID пользователя
-    await state.update_data(selected_user_id=user_id)
-    await state.set_state(CertificateFSM.title)
-
-    try:
-        await callback.message.edit_text(
-            "📝 Введите название сертификата:"
-        )
-    except Exception:
-        await callback.message.answer(
-            "📝 Введите название сертификата:"
-        )
-
-    await callback.answer()
-
-
-@admin_router.message(CertificateFSM.title)
-async def certificate_title_entered(
-    message: Message,
-    state: FSMContext
-) -> None:
-    """
-    Обработать название сертификата.
-
-    Args:
-        message: Сообщение с названием
-        state: FSM контекст
-    """
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    title = message.text.strip()
-
-    if len(title) < MIN_CERTIFICATE_TITLE_LENGTH:
-        await message.answer(
-            "⚠️ Название сертификата должно содержать минимум 3 символа."
-        )
-        return
-
-    await state.update_data(certificate_title=title)
-    await state.set_state(CertificateFSM.file)
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Без файла",
-                    callback_data="cert_no_file"
-                )
-            ]
-        ]
-    )
-
-    await message.answer(
-        "📄 Отправьте файл сертификата (документ) "
-        "или нажмите 'Без файла' чтобы создать сертификат без файла:",
-        reply_markup=keyboard
-    )
-
-
-@admin_router.callback_query(F.data == "cert_no_file", CertificateFSM.file)
-async def certificate_no_file(
-    callback: CallbackQuery,
-    state: FSMContext
-) -> None:
-    """
-    Создать сертификат без файла.
-
-    Args:
-        callback: Callback query
-        state: FSM контекст
-    """
-    if callback.from_user.id != ADMIN_ID:
-        return
-
-    await create_certificate(callback.message, state, file_id=None)
-    await callback.answer()
-
-
-@admin_router.message(
-    CertificateFSM.file,
-    F.content_type == ContentType.DOCUMENT
-)
-async def certificate_file_received(
-    message: Message,
-    state: FSMContext
-) -> None:
-    """
-    Обработать файл сертификата.
-
-    Args:
-        message: Сообщение с документом
-        state: FSM контекст
-    """
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    await create_certificate(
-        message,
-        state,
-        file_id=message.document.file_id
-    )
-
-
-async def create_certificate(
-    message: Message,
-    state: FSMContext,
-    file_id: str = None
-) -> None:
-    """
-    Создать сертификат и отправить уведомление пользователю.
-
-    Args:
-        message: Сообщение для ответа
-        state: FSM контекст
-        file_id: File ID документа сертификата (опционально)
-    """
-    lang = await get_user_language(message.from_user.id)
-    data = await state.get_data()
-
-    user_id = data.get("selected_user_id")
-    title = data.get("certificate_title")
-
-    if not user_id or not title:
-        await message.answer(
-            "⚠️ Ошибка: данные не найдены. Попробуйте снова."
-        )
-        await state.clear()
-        return
-
-    async with async_session() as session:
-        # Проверяем, существует ли пользователь
-        user = await session.get(User, user_id)
-        if not user:
-            await message.answer("⚠️ Пользователь не найден.")
-            await state.clear()
-            return
-
-        # Создаем сертификат
-        certificate = Certificate(
-            user_id=user_id,
-            title=title,
-            file_id=file_id
-        )
-
-        session.add(certificate)
-        await session.commit()
-
-        # Уведомляем пользователя
-        if user.user_id:
-            try:
-                notification_text = (
-                    f"🏅 Поздравляем! Вам выдан сертификат:\n\n"
-                    f"<b>{title}</b>"
-                )
-
-                await message.bot.send_message(
-                    user.user_id,
-                    notification_text,
-                    parse_mode="HTML"
-                )
-
-                # Если есть файл, отправляем его
-                if file_id:
-                    try:
-                        await message.bot.send_document(
-                            user.user_id,
-                            file_id,
-                            caption="📄 Ваш сертификат"
-                        )
-                    except Exception as e:
-                        print(
-                            f"Ошибка при отправке файла сертификата: {e}"
-                        )
-
-            except Exception as e:
-                print(f"Ошибка при уведомлении пользователя: {e}")
-
-    # Подтверждение админу
-    confirmation_text = (
-        f"✅ Сертификат «{title}» выдан пользователю "
-        f"{user.name or 'ID: ' + str(user.id)}"
-    )
-    if file_id:
-        confirmation_text += " с файлом"
-
-    await message.answer(
-        confirmation_text,
-        reply_markup=admin_back_keyboard(lang)
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+        ])
     )
     await state.clear()
 
@@ -1140,23 +825,3 @@ async def invalid_edit_price(message: Message, state: FSMContext) -> None:
         return
 
     await message.answer("⚠️ Введите корректную цену (только цифры):")
-
-
-@admin_router.message(CertificateFSM.file)
-async def invalid_certificate_file(
-    message: Message,
-    state: FSMContext
-) -> None:
-    """
-    Обработать неправильный формат файла сертификата.
-
-    Args:
-        message: Входящее сообщение
-        state: FSM контекст
-    """
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    await message.answer(
-        "⚠️ Отправьте файл как документ или нажмите 'Без файла'"
-    )

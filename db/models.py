@@ -128,17 +128,3 @@ class TestResult(Base, AsyncAttrs):
     # Отношения
     user = relationship("User", back_populates="test_results")
     test = relationship("Test", back_populates="results")
-
-
-class Certificate(Base, AsyncAttrs):
-    """Модель сертификата."""
-    __tablename__ = 'certificates'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    title = Column(String(200), nullable=False)
-    file_id = Column(String(500), nullable=True)
-    issued_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Отношения
-    user = relationship("User")

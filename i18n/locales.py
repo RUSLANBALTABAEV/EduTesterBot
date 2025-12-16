@@ -5,8 +5,12 @@
 """
 from typing import Any
 
-# Константа для минимальной длины названия сертификата
-MIN_CERTIFICATE_TITLE_LENGTH = 3
+# Доступные языки
+AVAILABLE_LANGUAGES = {
+    "ru": "🇷🇺 Русский",
+    "en": "🇺🇸 English",
+    "uz": "🇺🇿 O'zbek"
+}
 
 # Словари переводов
 TRANSLATIONS = {
@@ -25,8 +29,6 @@ TRANSLATIONS = {
         "btn_auth": "Авторизация",
         "btn_courses": "Курсы",
         "btn_my_courses": "Мои курсы",
-        "btn_certificates": "Мои сертификаты",
-        "btn_admin_certificates": "Сертификаты",
         "btn_admin_panel": "Управление курсами и пользователями",
         "btn_logout": "Выход",
         "btn_language": "🌐 Язык",
@@ -112,120 +114,12 @@ TRANSLATIONS = {
         "no_my_courses": "📭 У вас пока нет курсов.",
         "no_description": "Без описания",
 
-        # Сертификаты
-        "no_access": "⛔ Нет доступа.",
-        "no_certificates": "📭 Сертификатов пока нет.",
-        "no_my_certificates": "📭 У вас пока нет сертификатов.",
-        "certificate_file_error": (
-            "⚠️ Ошибка при отправке файла сертификата."
-        ),
-        "your_certificate": "📄 Ваш сертификат",
-        "certificate_file": "📄 Файл сертификата",
-
         # Администратор
-        "admin_main_menu": "👤 Главное меню администратора:",
+        "no_access": "⛔ Нет доступа.",
         "btn_show_users": "👥 Список пользователей",
         "btn_manage_courses": "📚 Управление курсами",
         "btn_add_course": "➕ Добавить курс",
-        "btn_add_certificate": "🏅 Выдать сертификат",
         "btn_delete_all_users": "🗑 Удалить всех пользователей",
-        "btn_admin_back": "🔝 Главное меню администратора",
-        "no_users": "📭 Пользователей пока нет.",
-        "btn_delete": "🗑 Удалить",
-        "user_deleted": (
-            "🗑 Пользователь «{name}» "
-            "(TG ID: {telegram_id}) удалён."
-        ),
-        "user_not_found": "⚠️ Пользователь не найден.",
-        "no_users_to_delete": "⚠️ Пользователей нет.",
-        "all_users_deleted": "🗑 Все пользователи удалены.",
-        "course_list": "📚 Список курсов:",
-        "btn_edit": "✏️ Редактировать",
-        "course_deleted": "🗑 Курс «{title}» удалён.",
-        "course_updated": "✅ Курс «{title}» успешно обновлён!",
-        "enter_course_title": "➕ Введите название нового курса:",
-        "enter_course_description": "Введите описание курса:",
-        "enter_course_price": "Введите цену курса (число):",
-        "enter_start_date": (
-            "Введите дату начала курса (ДД.MM.ГГГГ):"
-        ),
-        "invalid_date_format": (
-            "⚠️ Неверный формат даты. "
-            "Введите снова (ДД.MM.ГГГГ):"
-        ),
-        "enter_end_date": (
-            "Введите дату окончания курса (ДД.MM.ГГГГ):"
-        ),
-        "end_date_before_start": (
-            "⚠️ Дата окончания не может быть раньше "
-            "даты начала."
-        ),
-        "course_title_exists": (
-            "⚠️ Курс с таким названием уже существует!"
-        ),
-        "course_added": "✅ Курс «{title}» добавлен!",
-
-        # Редактирование курса
-        "edit_course_title": (
-            "✏️ Редактирование курса «{title}»\n\n"
-            "Введите новое название курса (текущее: {current}):"
-        ),
-        "edit_course_description": "Введите новое описание курса:",
-        "edit_course_price": "Введите новую цену курса:",
-        "edit_course_start_date": (
-            "Введите новую дату начала курса (ДД.ММ.ГГГГ):"
-        ),
-        "edit_course_end_date": (
-            "Введите новую дату окончания курса (ДД.ММ.ГГГГ):"
-        ),
-
-        # Сертификаты - администратор
-        "select_user_for_certificate": (
-            "👥 Выберите пользователя для выдачи сертификата:"
-        ),
-        "enter_certificate_title": "📝 Введите название сертификата:",
-        "certificate_title_too_short": (
-            "⚠️ Название сертификата должно содержать "
-            "минимум 3 символа."
-        ),
-        "send_certificate_file": (
-            "📄 Отправьте файл сертификата (документ) "
-            "или нажмите 'Без файла':"
-        ),
-        "btn_no_file": "✅ Без файла",
-        "certificate_issued": (
-            "✅ Сертификат «{title}» выдан пользователю {name}"
-        ),
-        "certificate_issued_with_file": (
-            "✅ Сертификат «{title}» выдан пользователю "
-            "{name} с файлом"
-        ),
-        "certificate_notification": (
-            "🏅 Поздравляем! Вам выдан сертификат:\n\n"
-            "<b>{title}</b>"
-        ),
-        "your_certificate_file": "📄 Ваш сертификат",
-        "error_invalid_certificate_data": (
-            "⚠️ Ошибка: данные не найдены. "
-            "Попробуйте снова."
-        ),
-        "invalid_price_format": (
-            "⚠️ Введите корректную цену (только цифры):"
-        ),
-        "invalid_certificate_file_format": (
-            "⚠️ Отправьте файл как документ "
-            "или нажмите 'Без файла'"
-        ),
-
-        # Уведомления
-        "course_starts_today": (
-            "🚀 Сегодня стартует курс: <b>{title}</b>!\n"
-            "Желаем удачи 🎉"
-        ),
-        "course_ends_today": (
-            "📅 Сегодня завершился курс: <b>{title}</b>.\n"
-            "Спасибо за обучение 🙌"
-        ),
 
         # Общие
         "without_name": "Без имени",
@@ -247,8 +141,6 @@ TRANSLATIONS = {
         "btn_auth": "Authorization",
         "btn_courses": "Courses",
         "btn_my_courses": "My Courses",
-        "btn_certificates": "My Certificates",
-        "btn_admin_certificates": "Certificates",
         "btn_admin_panel": "Manage Courses and Users",
         "btn_logout": "Logout",
         "btn_language": "🌐 Language",
@@ -316,123 +208,12 @@ TRANSLATIONS = {
         "no_my_courses": "📭 You don't have any courses yet.",
         "no_description": "No description",
 
-        # Certificates
-        "no_access": "⛔ Access denied.",
-        "no_certificates": "📭 No certificates yet.",
-        "no_my_certificates": (
-            "📭 You don't have any certificates yet."
-        ),
-        "certificate_file_error": (
-            "⚠️ Error sending certificate file."
-        ),
-        "your_certificate": "📄 Your certificate",
-        "certificate_file": "📄 Certificate file",
-
         # Admin
-        "admin_main_menu": "👤 Administrator main menu:",
+        "no_access": "⛔ Access denied.",
         "btn_show_users": "👥 Users list",
         "btn_manage_courses": "📚 Manage courses",
         "btn_add_course": "➕ Add course",
-        "btn_add_certificate": "🏅 Issue certificate",
         "btn_delete_all_users": "🗑 Delete all users",
-        "btn_admin_back": "🔝 Administrator main menu",
-        "no_users": "📭 No users yet.",
-        "btn_delete": "🗑 Delete",
-        "user_deleted": (
-            "🗑 User «{name}» (TG ID: {telegram_id}) deleted."
-        ),
-        "user_not_found": "⚠️ User not found.",
-        "no_users_to_delete": "⚠️ No users to delete.",
-        "all_users_deleted": "🗑 All users deleted.",
-        "course_list": "📚 Courses list:",
-        "btn_edit": "✏️ Edit",
-        "course_deleted": "🗑 Course «{title}» deleted.",
-        "course_updated": "✅ Course «{title}» successfully updated!",
-        "enter_course_title": "➕ Enter new course title:",
-        "enter_course_description": "Enter course description:",
-        "enter_course_price": "Enter course price (number):",
-        "enter_start_date": (
-            "Enter course start date (DD.MM.YYYY):"
-        ),
-        "invalid_date_format": (
-            "⚠️ Invalid date format. Enter again (DD.MM.YYYY):"
-        ),
-        "enter_end_date": "Enter course end date (DD.MM.YYYY):",
-        "end_date_before_start": (
-            "⚠️ End date cannot be earlier than start date."
-        ),
-        "course_title_exists": (
-            "⚠️ Course with this title already exists!"
-        ),
-        "course_added": "✅ Course «{title}» added!",
-
-        # Course editing
-        "edit_course_title": (
-            "✏️ Editing course «{title}»\n\n"
-            "Enter new course title (current: {current}):"
-        ),
-        "edit_course_description": "Enter new course description:",
-        "edit_course_price": "Enter new course price:",
-        "edit_course_start_date": (
-            "Enter new course start date (DD.MM.YYYY):"
-        ),
-        "edit_course_end_date": (
-            "Enter new course end date (DD.MM.YYYY):"
-        ),
-
-        # Certificates - admin
-        "select_user_for_certificate": (
-            "👥 Select user to issue certificate:"
-        ),
-        "enter_certificate_title": "📝 Enter certificate title:",
-        "certificate_title_too_short": (
-            "⚠️ Certificate title must contain "
-            "at least 3 characters."
-        ),
-        "send_certificate_file": (
-            "📄 Send certificate file (document) "
-            "or click 'Without file':"
-        ),
-        "btn_no_file": "✅ Without file",
-        "certificate_issued": (
-            "✅ Certificate «{title}» issued to user {name}"
-        ),
-        "certificate_issued_with_file": (
-            "✅ Certificate «{title}» issued to user "
-            "{name} with file"
-        ),
-        "certificate_notification": (
-            "🏅 Congratulations! "
-            "You have been issued a certificate:\n\n"
-            "<b>{title}</b>"
-        ),
-        "your_certificate_file": "📄 Your certificate",
-        "error_invalid_certificate_data": (
-            "⚠️ Error: data not found. Please try again."
-        ),
-        "invalid_price_format": (
-            "⚠️ Enter correct price (numbers only):"
-        ),
-        "invalid_certificate_file_format": (
-            "⚠️ Send file as document or click 'Without file'"
-        ),
-
-        # Notifications
-        "course_starts_today": (
-            "🚀 Course starts today: <b>{title}</b>!\n"
-            "Good luck 🎉"
-        ),
-        "course_ends_today": (
-            "📅 Course ended today: <b>{title}</b>.\n"
-            "Thank you for studying 🙌"
-        ),
-
-        # Common
-        "without_name": "Without name",
-        "not_specified": "not specified",
-        "not_indicated": "not indicated",
-        "unknown": "unknown",
-        "user": "👤 User: {name}",
     },
 
     "uz": {
@@ -447,8 +228,6 @@ TRANSLATIONS = {
         "btn_auth": "Kirish",
         "btn_courses": "Kurslar",
         "btn_my_courses": "Mening kurslarim",
-        "btn_certificates": "Mening sertifikatlarim",
-        "btn_admin_certificates": "Sertifikatlar",
         "btn_admin_panel": "Kurs va foydalanuvchilarni boshqarish",
         "btn_logout": "Chiqish",
         "btn_language": "🌐 Til",
@@ -534,142 +313,15 @@ TRANSLATIONS = {
         "no_my_courses": "📭 Sizda hozircha kurslar yo'q.",
         "no_description": "Tavsif yo'q",
 
-        # Sertifikatlar
-        "no_access": "⛔ Ruxsat yo'q.",
-        "no_certificates": "📭 Hozircha sertifikatlar yo'q.",
-        "no_my_certificates": "📭 Sizda hozircha sertifikatlar yo'q.",
-        "certificate_file_error": (
-            "⚠️ Sertifikat faylini yuborishda xatolik."
-        ),
-        "your_certificate": "📄 Sizning sertifikatingiz",
-        "certificate_file": "📄 Sertifikat fayli",
-
         # Administrator
-        "admin_main_menu": "👤 Administrator asosiy menyusi:",
+        "no_access": "⛔ Ruxsat yo'q.",
         "btn_show_users": "👥 Foydalanuvchilar ro'yxati",
         "btn_manage_courses": "📚 Kurslarni boshqarish",
         "btn_add_course": "➕ Kurs qo'shish",
-        "btn_add_certificate": "🏅 Sertifikat berish",
         "btn_delete_all_users": (
             "🗑 Barcha foydalanuvchilarni o'chirish"
         ),
-        "btn_admin_back": "🔝 Administrator asosiy menyusi",
-        "no_users": "📭 Hozircha foydalanuvchilar yo'q.",
-        "btn_delete": "🗑 O'chirish",
-        "user_deleted": (
-            "🗑 Foydalanuvchi «{name}» "
-            "(TG ID: {telegram_id}) o'chirildi."
-        ),
-        "user_not_found": "⚠️ Foydalanuvchi topilmadi.",
-        "no_users_to_delete": (
-            "⚠️ O'chiriladigan foydalanuvchilar yo'q."
-        ),
-        "all_users_deleted": (
-            "🗑 Barcha foydalanuvchilar o'chirildi."
-        ),
-        "course_list": "📚 Kurslar ro'yxati:",
-        "btn_edit": "✏️ Tahrirlash",
-        "course_deleted": "🗑 «{title}» kursi o'chirildi.",
-        "course_updated": (
-            "✅ «{title}» kursi muvaffaqiyatli yangilandi!"
-        ),
-        "enter_course_title": "➕ Yangi kurs nomini kiriting:",
-        "enter_course_description": "Kurs tavsifini kiriting:",
-        "enter_course_price": "Kurs narxini kiriting (raqam):",
-        "enter_start_date": (
-            "Kurs boshlanish sanasini kiriting (KK.OO.YYYY):"
-        ),
-        "invalid_date_format": (
-            "⚠️ Noto'g'ri sana formati. "
-            "Qayta kiriting (KK.OO.YYYY):"
-        ),
-        "enter_end_date": (
-            "Kurs tugash sanasini kiriting (KK.OO.YYYY):"
-        ),
-        "end_date_before_start": (
-            "⚠️ Tugash sanasi boshlanish sanasidan "
-            "oldin bo'la olmaydi."
-        ),
-        "course_title_exists": (
-            "⚠️ Bunday nomli kurs allaqachon mavjud!"
-        ),
-        "course_added": "✅ «{title}» kursi qo'shildi!",
-
-        # Kursni tahrirlash
-        "edit_course_title": (
-            "✏️ «{title}» kursini tahrirlash\n\n"
-            "Yangi kurs nomini kiriting (hozirgi: {current}):"
-        ),
-        "edit_course_description": "Yangi kurs tavsifini kiriting:",
-        "edit_course_price": "Yangi kurs narxini kiriting:",
-        "edit_course_start_date": (
-            "Yangi boshlanish sanasini kiriting (KK.OO.YYYY):"
-        ),
-        "edit_course_end_date": (
-            "Yangi tugash sanasini kiriting (KK.OO.YYYY):"
-        ),
-
-        # Sertifikatlar - administrator
-        "select_user_for_certificate": (
-            "👥 Sertifikat berish uchun foydalanuvchini tanlang:"
-        ),
-        "enter_certificate_title": "📝 Sertifikat nomini kiriting:",
-        "certificate_title_too_short": (
-            "⚠️ Sertifikat nomi kamida 3 ta belgi bo'lishi kerak."
-        ),
-        "send_certificate_file": (
-            "📄 Sertifikat faylini yuboring (hujjat) "
-            "yoki 'Faylsiz' tugmasini bosing:"
-        ),
-        "btn_no_file": "✅ Faylsiz",
-        "certificate_issued": (
-            "✅ «{title}» sertifikati {name} "
-            "foydalanuvchiga berildi"
-        ),
-        "certificate_issued_with_file": (
-            "✅ «{title}» sertifikati {name} "
-            "foydalanuvchiga fayl bilan berildi"
-        ),
-        "certificate_notification": (
-            "🏅 Tabriklaymiz! Sizga sertifikat berildi:\n\n"
-            "<b>{title}</b>"
-        ),
-        "your_certificate_file": "📄 Sizning sertifikatingiz",
-        "error_invalid_certificate_data": (
-            "⚠️ Xato: ma'lumot topilmadi. Qayta urinib ko'ring."
-        ),
-        "invalid_price_format": (
-            "⚠️ To'g'ri narxni kiriting (faqat raqamlar):"
-        ),
-        "invalid_certificate_file_format": (
-            "⚠️ Faylni hujjat sifatida yuboring "
-            "yoki 'Faylsiz' tugmasini bosing"
-        ),
-
-        # Bildirishnomalar
-        "course_starts_today": (
-            "🚀 Bugun kurs boshlanadi: <b>{title}</b>!\n"
-            "Omad yor bo'lsin 🎉"
-        ),
-        "course_ends_today": (
-            "📅 Bugun kurs tugadi: <b>{title}</b>.\n"
-            "O'qiganingiz uchun rahmat 🙌"
-        ),
-
-        # Umumiy
-        "without_name": "Ismsiz",
-        "not_specified": "ko'rsatilmagan",
-        "not_indicated": "ko'rsatilmagan",
-        "unknown": "noma'lum",
-        "user": "👤 Foydalanuvchi: {name}",
     }
-}
-
-# Доступные языки
-AVAILABLE_LANGUAGES = {
-    "ru": "🇷🇺 Русский",
-    "en": "🇺🇸 English",
-    "uz": "🇺🇿 O'zbek"
 }
 
 
@@ -700,20 +352,3 @@ def get_text(key: str, lang: str = "ru", **kwargs: Any) -> str:
             return text
 
     return text
-
-
-def get_user_language(user_id: int) -> str:
-    """
-    Получить язык пользователя (по умолчанию русский).
-
-    В реальном проекте можно хранить в БД.
-
-    Args:
-        user_id: ID пользователя
-
-    Returns:
-        Код языка по умолчанию 'ru'
-    """
-    # Пока что возвращаем русский по умолчанию
-    # В будущем можно добавить таблицу user_settings в БД
-    return "ru"
