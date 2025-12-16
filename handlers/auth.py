@@ -12,6 +12,7 @@ from db.models import User
 from db.session import async_session
 from fsm.auth import Auth
 from i18n.locales import get_text
+from keyboards.reply import main_menu
 
 auth_router = Router()
 
@@ -56,19 +57,24 @@ async def start_auth(message: types.Message, state: FSMContext) -> None:
 
     if user and user.is_active:
         await message.answer(get_text("already_logged_in", lang))
+        # Показываем главное меню
+        await message.answer(
+            get_text("welcome", lang),
+            reply_markup=main_menu(message.from_user.id, lang)
+        )
     else:
-        # Создаем клавиатуру с кнопкой отправки номера телефона
+        # Создаем клавиатуру с кнопкой отправки номера телефона с локализацией
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(text="📱 Отправить номер телефона", request_contact=True)],
-                [KeyboardButton(text="✏️ Ввести вручную")]
+                [KeyboardButton(text=get_text("send_phone_btn", lang), request_contact=True)],
+                [KeyboardButton(text=get_text("enter_manual_btn", lang))]
             ],
             resize_keyboard=True,
             one_time_keyboard=True
         )
         
         await message.answer(
-            "Для авторизации отправьте номер телефона:",
+            get_text("auth_instruction", lang),
             reply_markup=keyboard
         )
         await state.set_state(Auth.phone)
@@ -94,6 +100,8 @@ async def process_phone_contact(
 
 
 @auth_router.message(Auth.phone, F.text == "✏️ Ввести вручную")
+@auth_router.message(Auth.phone, F.text == "✏️ Enter manually")
+@auth_router.message(Auth.phone, F.text == "✏️ Qo'lda kiritish")
 async def request_manual_phone(
     message: types.Message,
     state: FSMContext
@@ -107,7 +115,7 @@ async def request_manual_phone(
     """
     lang = await get_user_language(message.from_user.id)
     await message.answer(
-        "Введите ваш номер телефона (в формате +998900000000):",
+        get_text("enter_phone_manual", lang),
         reply_markup=types.ReplyKeyboardRemove()
     )
 
@@ -152,22 +160,40 @@ async def process_phone_number(
         if user:
             if user.user_id and user.is_active:
                 await message.answer(
-                    get_text("account_already_active", lang),
+                    get_text("account_already_active", user.language),
                     reply_markup=types.ReplyKeyboardRemove()
+                )
+                # Показываем главное меню после сообщения
+                await message.answer(
+                    get_text("welcome", user.language),
+                    reply_markup=main_menu(message.from_user.id, user.language)
                 )
             else:
                 user.user_id = message.from_user.id
                 user.is_active = True
                 session.add(user)
                 await session.commit()
+                
+                # Используем язык из БД после обновления
+                updated_lang = user.language if user.language else "ru"
                 await message.answer(
-                    get_text("login_success", lang),
+                    get_text("login_success", updated_lang),
                     reply_markup=types.ReplyKeyboardRemove()
+                )
+                # Показываем главное меню после успешной авторизации
+                await message.answer(
+                    get_text("welcome", updated_lang),
+                    reply_markup=main_menu(message.from_user.id, updated_lang)
                 )
         else:
             await message.answer(
                 get_text("user_not_found", lang),
                 reply_markup=types.ReplyKeyboardRemove()
+            )
+            # Показываем главное меню после неудачной попытки
+            await message.answer(
+                get_text("welcome", lang),
+                reply_markup=main_menu(message.from_user.id, lang)
             )
 
     await state.clear()
@@ -194,6 +220,11 @@ async def logout(message: types.Message) -> None:
             user.is_active = False
             session.add(user)
             await session.commit()
-            await message.answer(get_text("logout_success", lang))
+            await message.answer(get_text("logout_success", user.language))
+            # Показываем главное меню после выхода
+            await message.answer(
+                get_text("welcome", user.language),
+                reply_markup=main_menu(message.from_user.id, user.language)
+            )
         else:
             await message.answer(get_text("not_authorized", lang))

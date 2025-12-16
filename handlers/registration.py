@@ -11,6 +11,7 @@ from db.session import async_session
 from fsm.registration import Registration
 from config.bot_config import ADMIN_ID
 from i18n.locales import get_text
+from keyboards.reply import main_menu  # Добавляем импорт
 
 registration_router = Router()
 
@@ -44,7 +45,7 @@ async def start_registration(message: types.Message, state: FSMContext) -> None:
         )
         user = result.scalar_one_or_none()
 
-    if user:
+    if user and user.is_active:
         name = user.name or get_text("without_name", lang)
         phone = user.phone or get_text("not_specified", lang)
         await message.answer(
@@ -166,6 +167,16 @@ async def process_document(message: types.Message, state: FSMContext) -> None:
     # Получаем все данные
     data = await state.get_data()
     
+    # Получаем текущий язык пользователя
+    async with async_session() as session:
+        user_result = await session.execute(
+            select(User).where(User.user_id == message.from_user.id)
+        )
+        existing_user = user_result.scalar_one_or_none()
+        
+        # Используем сохраненный язык или текущий
+        user_lang = existing_user.language if existing_user and existing_user.language else lang
+    
     # Создаём пользователя
     async with async_session() as session:
         new_user = User(
@@ -175,13 +186,18 @@ async def process_document(message: types.Message, state: FSMContext) -> None:
             phone=data.get('phone'),
             photo=data.get('photo'),
             document=document_id,
-            language=lang,
+            language=user_lang,  # Используем сохраненный язык
             is_active=True
         )
         session.add(new_user)
         await session.commit()
     
-    await message.answer(get_text("registration_complete", lang))
+    await message.answer(get_text("registration_complete", user_lang))
+    # Показываем главное меню после регистрации
+    await message.answer(
+        get_text("welcome", user_lang),
+        reply_markup=main_menu(message.from_user.id, user_lang)
+    )
     
     # Уведомляем администратора о новом пользователе
     try:

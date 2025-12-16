@@ -97,13 +97,13 @@ async def set_language(callback: types.CallbackQuery) -> None:
             user.language = new_lang
             await session.commit()
         else:
-            # Создаем временного пользователя только для языка
-            temp_user = User(
+            # Создаем пользователя с выбранным языком
+            new_user = User(
                 user_id=callback.from_user.id,
                 language=new_lang,
                 is_active=False
             )
-            session.add(temp_user)
+            session.add(new_user)
             await session.commit()
     
     await callback.message.edit_text(get_text("language_changed", new_lang))

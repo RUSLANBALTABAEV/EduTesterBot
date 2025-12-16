@@ -33,6 +33,12 @@ TRANSLATIONS = {
         "btn_logout": "Выход",
         "btn_language": "🌐 Язык",
 
+        # Авторизация - новые переводы
+        "send_phone_btn": "📱 Отправить номер телефона",
+        "enter_manual_btn": "✏️ Ввести вручную",
+        "auth_instruction": "Для авторизации отправьте номер телефона:",
+        "enter_phone_manual": "Введите ваш номер телефона (в формате +998900000000):",
+
         # Регистрация
         "already_registered": (
             "⚠️ Вы уже зарегистрированы.\n"
@@ -145,6 +151,12 @@ TRANSLATIONS = {
         "btn_logout": "Logout",
         "btn_language": "🌐 Language",
 
+        # Authorization - new translations
+        "send_phone_btn": "📱 Send phone number",
+        "enter_manual_btn": "✏️ Enter manually",
+        "auth_instruction": "For authorization send your phone number:",
+        "enter_phone_manual": "Enter your phone number (format +998900000000):",
+
         # Registration
         "already_registered": (
             "⚠️ You are already registered.\n"
@@ -231,6 +243,12 @@ TRANSLATIONS = {
         "btn_admin_panel": "Kurs va foydalanuvchilarni boshqarish",
         "btn_logout": "Chiqish",
         "btn_language": "🌐 Til",
+
+        # Avtorizatsiya - yangi tarjimalar
+        "send_phone_btn": "📱 Telefon raqamini yuborish",
+        "enter_manual_btn": "✏️ Qo'lda kiritish",
+        "auth_instruction": "Avtorizatsiya uchun telefon raqamingizni yuboring:",
+        "enter_phone_manual": "Telefon raqamingizni kiriting (format +998900000000):",
 
         # Ro'yxatdan o'tish
         "already_registered": (
@@ -323,32 +341,3 @@ TRANSLATIONS = {
         ),
     }
 }
-
-
-def get_text(key: str, lang: str = "ru", **kwargs: Any) -> str:
-    """
-    Получить локализованный текст.
-
-    Args:
-        key: Ключ перевода
-        lang: Код языка (ru/en/uz)
-        **kwargs: Параметры для форматирования строки
-
-    Returns:
-        Локализованная строка с подставленными параметрами
-    """
-    if lang not in TRANSLATIONS:
-        lang = "ru"
-
-    text = TRANSLATIONS[lang].get(
-        key,
-        TRANSLATIONS["ru"].get(key, key)
-    )
-
-    if kwargs:
-        try:
-            return text.format(**kwargs)
-        except (KeyError, ValueError):
-            return text
-
-    return text
