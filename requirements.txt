@@ -1,5 +1,6 @@
 aiogram
 python-dotenv
+asyncpg
 SQLAlchemy
 aiosqlite
 apscheduler
