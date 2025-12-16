@@ -94,7 +94,16 @@ async def process_age(message: types.Message, state: FSMContext) -> None:
         
     await state.update_data(age=age)
     await state.set_state(Registration.phone)
-    await message.answer(get_text("enter_phone", lang))
+    # Клавиатура с кнопкой отправки контакта и опцией ввода вручную
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text=get_text("send_phone_btn", lang), request_contact=True)],
+            [types.KeyboardButton(text=get_text("enter_manual_btn", lang))]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer(get_text("enter_phone", lang), reply_markup=keyboard)
 
 
 @registration_router.message(Registration.phone, F.text.regexp(r"^\+?\d{10,15}$"))
@@ -120,7 +129,31 @@ async def process_phone(message: types.Message, state: FSMContext) -> None:
             
     await state.update_data(phone=message.text.strip())
     await state.set_state(Registration.photo)
-    await message.answer(get_text("send_photo", lang))
+    # Удаляем клавиатуру с кнопкой отправки контакта
+    await message.answer(get_text("send_photo", lang), reply_markup=types.ReplyKeyboardRemove())
+
+
+@registration_router.message(Registration.phone, F.contact)
+async def process_phone_contact(message: types.Message, state: FSMContext) -> None:
+    """Обработать контакт, отправленный через кнопку request_contact при регистрации."""
+    lang = await get_user_language(message.from_user.id)
+
+    if message.contact:
+        phone = message.contact.phone_number
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(User).where(User.phone == phone)
+            )
+            existing_user = result.scalar_one_or_none()
+
+            if existing_user:
+                await message.answer(get_text("phone_exists", lang), reply_markup=types.ReplyKeyboardRemove())
+                return
+
+        await state.update_data(phone=phone)
+        await state.set_state(Registration.photo)
+        await message.answer(get_text("send_photo", lang), reply_markup=types.ReplyKeyboardRemove())
 
 
 @registration_router.message(Registration.photo, F.photo)
@@ -177,19 +210,37 @@ async def process_document(message: types.Message, state: FSMContext) -> None:
         # Используем сохраненный язык или текущий
         user_lang = existing_user.language if existing_user and existing_user.language else lang
     
-    # Создаём пользователя
+    # Создаём или обновляем пользователя (во избежание попытки вставить уже существующий user_id)
     async with async_session() as session:
-        new_user = User(
-            user_id=message.from_user.id,
-            name=data.get('name'),
-            age=data.get('age'),
-            phone=data.get('phone'),
-            photo=data.get('photo'),
-            document=document_id,
-            language=user_lang,  # Используем сохраненный язык
-            is_active=True
+        result = await session.execute(
+            select(User).where(User.user_id == message.from_user.id)
         )
-        session.add(new_user)
+        db_user = result.scalar_one_or_none()
+
+        if db_user:
+            # Обновляем существующую запись
+            db_user.name = data.get('name')
+            db_user.age = data.get('age')
+            db_user.phone = data.get('phone')
+            db_user.photo = data.get('photo')
+            db_user.document = document_id
+            db_user.language = user_lang
+            db_user.is_active = True
+            session.add(db_user)
+        else:
+            # Создаём новую запись
+            new_user = User(
+                user_id=message.from_user.id,
+                name=data.get('name'),
+                age=data.get('age'),
+                phone=data.get('phone'),
+                photo=data.get('photo'),
+                document=document_id,
+                language=user_lang,  # Используем сохраненный язык
+                is_active=True
+            )
+            session.add(new_user)
+
         await session.commit()
     
     await message.answer(get_text("registration_complete", user_lang))

@@ -99,7 +99,8 @@ async def view_result_detail(callback: types.CallbackQuery) -> None:
     Args:
         callback: Callback query
     """
-    result_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    result_id = int(parts[-1])
     lang = await get_user_language(callback.from_user.id)
     
     async with async_session() as session:
@@ -186,7 +187,8 @@ async def save_result(callback: types.CallbackQuery) -> None:
     Args:
         callback: Callback query
     """
-    result_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    result_id = int(parts[-1])
     
     async with async_session() as session:
         # Получаем результат

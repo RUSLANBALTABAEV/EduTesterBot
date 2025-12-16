@@ -19,6 +19,7 @@ class AdminTestCreation(StatesGroup):
     total_questions = State()
     time_limit = State()
     scheduled_time = State()
+    upload_file = State()
     confirm = State()
 
 

@@ -54,7 +54,6 @@ def main_menu(user_id: int, lang: str = "ru") -> ReplyKeyboardMarkup:
     # Основные кнопки для всех
     builder.row(KeyboardButton(text=get_text("btn_registration", lang)))
     builder.row(KeyboardButton(text=get_text("btn_auth", lang)))
-    builder.row(KeyboardButton(text=get_text("btn_courses", lang)))
 
     if _is_admin(user_id):
         # Кнопки для администратора
@@ -62,10 +61,8 @@ def main_menu(user_id: int, lang: str = "ru") -> ReplyKeyboardMarkup:
             KeyboardButton(text=get_text("btn_admin_panel", lang))
         )
     else:
-        # Кнопки для обычного пользователя
-        builder.row(
-            KeyboardButton(text=get_text("btn_my_courses", lang))
-        )
+        # Кнопки для обычного пользователя (скрываем доступ к курсам)
+        pass
 
     builder.row(KeyboardButton(text=get_text("btn_language", lang)))
     builder.row(KeyboardButton(text=get_text("btn_logout", lang)))

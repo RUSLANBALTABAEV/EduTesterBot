@@ -46,18 +46,17 @@ async def manage_tests(callback: types.CallbackQuery):
     lang = await get_user_language(callback.from_user.id)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Создать тест вручную", callback_data="create_test")],
-        [InlineKeyboardButton(text="📤 Загрузить тест из Excel", callback_data="upload_excel_test")],
-        [InlineKeyboardButton(text="📥 Скачать шаблон Excel", callback_data="download_excel_template")],
-        [InlineKeyboardButton(text="📝 Добавить вопросы", callback_data="add_questions")],
-        [InlineKeyboardButton(text="📊 Результаты тестов", callback_data="test_results")],
-        [InlineKeyboardButton(text="📋 Список всех тестов", callback_data="list_all_tests")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")]
+        [InlineKeyboardButton(text=get_text("btn_create_test", lang), callback_data="create_test")],
+        [InlineKeyboardButton(text=get_text("cancel", lang), callback_data="upload_excel_test")],
+        [InlineKeyboardButton(text=get_text("cancel", lang), callback_data="download_excel_template")],
+        [InlineKeyboardButton(text=get_text("btn_add_questions", lang), callback_data="add_questions")],
+        [InlineKeyboardButton(text=get_text("btn_test_results", lang), callback_data="test_results")],
+        [InlineKeyboardButton(text=get_text("btn_test_results", lang), callback_data="list_all_tests")],
+        [InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="admin_menu")]
     ])
-    
+
     await callback.message.edit_text(
-        "📋 <b>Управление тестированием</b>\n\n"
-        "Выберите действие:",
+        get_text("manage_testing_title", lang) + "\n\n" + get_text("choose_course_for_test", lang),
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -178,7 +177,8 @@ async def select_course_for_test(callback: types.CallbackQuery, state: FSMContex
         callback: Callback query
         state: FSM контекст
     """
-    course_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    course_id = int(parts[-1])
     await state.update_data(course_id=course_id)
     await state.set_state(AdminTestCreation.title)
     
@@ -404,7 +404,8 @@ async def show_test_statistics(callback: types.CallbackQuery):
     Args:
         callback: Callback query
     """
-    test_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    test_id = int(parts[-1])
     
     async with async_session() as session:
         # Получаем результаты теста
@@ -453,7 +454,8 @@ async def export_test_results(callback: types.CallbackQuery):
     Args:
         callback: Callback query
     """
-    test_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    test_id = int(parts[-1])
     
     async with async_session() as session:
         # Получаем результаты с информацией о пользователях

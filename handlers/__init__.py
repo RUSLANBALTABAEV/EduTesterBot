@@ -1,7 +1,4 @@
-# handlers/__init__.py
-"""
-Инициализация обработчиков бота.
-"""
+"""Инициализация обработчиков бота."""
 from .start import start_router
 from .auth import auth_router
 from .registration import registration_router

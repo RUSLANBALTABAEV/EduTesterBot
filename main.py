@@ -13,11 +13,12 @@ from db.models import Base
 from handlers.start import start_router
 from handlers.auth import auth_router
 from handlers.registration import registration_router
-from handlers.courses import courses_router
-from handlers.my_courses import my_courses_router
+from handlers.tests import tests_router  # ИЗМЕНЕНО: заменяет courses
+from handlers.my_tests import my_tests_router  # ИЗМЕНЕНО: заменяет my_courses
 from handlers.testing import testing_router
 from handlers.admin import admin_router
 from handlers.admin_testing import admin_testing_router
+from handlers.test_results import results_router  # НОВОЕ
 
 
 async def create_tables():
@@ -40,11 +41,12 @@ async def main():
     dp.include_router(start_router)
     dp.include_router(auth_router)
     dp.include_router(registration_router)
-    dp.include_router(courses_router)
-    dp.include_router(my_courses_router)
+    dp.include_router(tests_router)  # ИЗМЕНЕНО
+    dp.include_router(my_tests_router)  # ИЗМЕНЕНО
     dp.include_router(testing_router)
     dp.include_router(admin_router)
     dp.include_router(admin_testing_router)
+    dp.include_router(results_router)  # НОВОЕ
     
     try:
         # Запуск бота

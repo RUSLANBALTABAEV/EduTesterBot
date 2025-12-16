@@ -38,7 +38,8 @@ async def start_test(callback: types.CallbackQuery, state: FSMContext):
         state: FSM контекст
     """
     lang = await get_user_language(callback.from_user.id)
-    test_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    test_id = int(parts[-1])
     
     async with async_session() as session:
         # Проверяем пользователя
