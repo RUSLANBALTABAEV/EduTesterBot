@@ -54,7 +54,7 @@ class CourseEnrollment(Base, AsyncAttrs):
     
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'))
-    course_id = Column(Integer, ForeignKey('courses.id'))
+    course_id = Column(Integer, ForeignKey('courses.id'), nullable=True)
     enrolled_at = Column(DateTime, default=datetime.utcnow)
     
     # Отношения
