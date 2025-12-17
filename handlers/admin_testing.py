@@ -3,12 +3,19 @@
 Обработчики для администрирования тестирования.
 """
 import io
+import json
 from datetime import datetime
 from aiogram import Router, F, types
 import logging
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton, 
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardRemove
+)
 import pandas as pd
 from sqlalchemy import select
 
@@ -44,7 +51,7 @@ async def get_user_language(user_id: int) -> str:
             select(User).where(User.user_id == user_id)
         )
         user = result.scalar_one_or_none()
-        return user.language if user and user.language else None
+        return user.language if user and user.language else "ru"
 
 
 @admin_testing_router.callback_query(F.data == "manage_tests")
@@ -128,9 +135,9 @@ async def admin_question_text(message: types.Message, state: FSMContext):
     await state.update_data(question_text=message.text.strip())
     # Спрашиваем тип вопроса
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Несколько вариантов один ответ", callback_data="qtype_single")],
-        [InlineKeyboardButton(text="Несколько вариантов два ответа", callback_data="qtype_multiple")],
-        [InlineKeyboardButton(text="Текстовый ответ", callback_data="qtype_text")]
+        [InlineKeyboardButton(text="❓ Один правильный ответ", callback_data="qtype_single")],
+        [InlineKeyboardButton(text="📝 Несколько правильных ответов", callback_data="qtype_multiple")],
+        [InlineKeyboardButton(text="✍️ Текстовый ответ", callback_data="qtype_text")]
     ])
     await state.set_state(AdminQuestionCreation.question_type)
     await message.answer("Выберите тип вопроса:", reply_markup=keyboard)
@@ -159,28 +166,332 @@ async def admin_question_points(message: types.Message, state: FSMContext):
         pts = 1.0
 
     await state.update_data(points=pts)
-    await state.set_state(AdminQuestionCreation.options)
-    await message.answer("Отправьте варианты ответа через '||'. Отметьте правильный вариант(ы) префиксом '*', или отправьте '-' для текстового ответа:")
+    
+    # Получаем тип вопроса
+    data = await state.get_data()
+    question_type = data.get('question_type', 'single')
+    
+    if question_type == 'text':
+        # Для текстового вопроса сразу переходим к сохранению
+        await save_question_without_options(message, state)
+    else:
+        # Начинаем пошаговый ввод вариантов
+        await state.update_data(
+            options_list=[],
+            current_option_index=0
+        )
+        await state.set_state(AdminQuestionCreation.enter_option_text)
+        await message.answer(
+            "Начнём вводить варианты ответа.\n\n"
+            "Введите текст первого варианта ответа:"
+        )
 
 
-@admin_testing_router.message(AdminQuestionCreation.options)
-async def admin_question_options(message: types.Message, state: FSMContext):
+@admin_testing_router.message(AdminQuestionCreation.enter_option_text)
+async def admin_enter_option_text(message: types.Message, state: FSMContext):
+    """Ввод текста варианта ответа."""
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    option_text = message.text.strip()
+    
+    # Сохраняем текущий вариант
+    await state.update_data(current_option_text=option_text)
+    
+    # Спрашиваем, правильный ли этот вариант
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="✅ Да, правильный")],
+            [KeyboardButton(text="❌ Нет, неправильный")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    
+    await message.answer(
+        f"Вариант: {option_text}\n\n"
+        "Это правильный вариант ответа?",
+        reply_markup=keyboard
+    )
+    await state.set_state(AdminQuestionCreation.mark_option_correct)
+
+
+@admin_testing_router.message(AdminQuestionCreation.mark_option_correct)
+async def admin_mark_option_correct(message: types.Message, state: FSMContext):
+    """Отметка правильности варианта."""
     if message.from_user.id != ADMIN_ID:
         return
 
     data = await state.get_data()
-    test_id = data.get('test_id')
-    if not test_id:
-        await message.answer("Ошибка: тест не выбран.")
-        await state.clear()
+    option_text = data.get('current_option_text')
+    options_list = data.get('options_list', [])
+    question_type = data.get('question_type', 'single')
+    
+    # Определяем, правильный ли вариант
+    is_correct = message.text.startswith("✅")
+    
+    # Добавляем вариант в список
+    options_list.append({
+        'text': option_text,
+        'is_correct': is_correct
+    })
+    
+    # Проверяем ограничения для single-вопросов
+    if question_type == 'single':
+        correct_count = sum(1 for opt in options_list if opt['is_correct'])
+        if correct_count > 1:
+            await message.answer(
+                "⚠️ Для вопроса с одним правильным ответом можно отметить только один вариант как правильный!\n"
+                "Последний вариант будет помечен как неправильный.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            # Помечаем все варианты как неправильные, кроме первого правильного
+            first_correct_found = False
+            for opt in options_list:
+                if opt['is_correct'] and not first_correct_found:
+                    first_correct_found = True
+                else:
+                    opt['is_correct'] = False
+    
+    await state.update_data(options_list=options_list)
+    
+    # Показываем текущий список вариантов
+    options_text = "📋 Текущие варианты:\n\n"
+    for i, opt in enumerate(options_list, 1):
+        prefix = "✅ " if opt['is_correct'] else "❌ "
+        options_text += f"{i}. {prefix}{opt['text']}\n"
+    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Добавить ещё вариант")],
+            [KeyboardButton(text="👁 Предпросмотр и редактирование")],
+            [KeyboardButton(text="💾 Сохранить и продолжить")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    
+    await message.answer(
+        f"{options_text}\n"
+        "Выберите действие:",
+        reply_markup=keyboard
+    )
+    await state.set_state(AdminQuestionCreation.add_more_options)
+
+
+@admin_testing_router.message(AdminQuestionCreation.add_more_options)
+async def admin_add_more_options(message: types.Message, state: FSMContext):
+    """Обработка выбора действия после добавления варианта."""
+    if message.from_user.id != ADMIN_ID:
         return
 
+    if message.text == "➕ Добавить ещё вариант":
+        await state.set_state(AdminQuestionCreation.enter_option_text)
+        await message.answer(
+            "Введите текст следующего варианта ответа:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    
+    elif message.text == "👁 Предпросмотр и редактирование":
+        await show_options_preview(message, state)
+    
+    elif message.text == "💾 Сохранить и продолжить":
+        await save_question_with_options(message, state)
+
+
+async def show_options_preview(message: types.Message, state: FSMContext):
+    """Показать предпросмотр вариантов с возможностью редактирования."""
+    data = await state.get_data()
+    options_list = data.get('options_list', [])
+    question_type = data.get('question_type', 'single')
+    
+    if not options_list:
+        await message.answer("Варианты еще не добавлены.", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(AdminQuestionCreation.enter_option_text)
+        await message.answer("Введите текст первого варианта:")
+        return
+    
+    # Формируем текст с предпросмотром
+    preview_text = "👁 **Предпросмотр вариантов:**\n\n"
+    for i, opt in enumerate(options_list, 1):
+        prefix = "✅ " if opt['is_correct'] else "❌ "
+        preview_text += f"{i}. {prefix}{opt['text']}\n"
+    
+    preview_text += f"\nТип вопроса: {'❓ Один правильный ответ' if question_type == 'single' else '📝 Несколько правильных ответов'}"
+    
+    # Клавиатура для редактирования
+    keyboard_buttons = []
+    for i in range(1, len(options_list) + 1):
+        keyboard_buttons.append(
+            [InlineKeyboardButton(text=f"✏️ Редактировать вариант {i}", 
+                                callback_data=f"edit_option_{i}")]
+        )
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="➕ Добавить новый вариант", callback_data="add_new_option"),
+        InlineKeyboardButton(text="🗑 Удалить все варианты", callback_data="delete_all_options")
+    ])
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="👌 Сохранить как есть", callback_data="save_options_as_is"),
+        InlineKeyboardButton(text="🔙 Назад к добавлению", callback_data="back_to_adding")
+    ])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    await message.answer(preview_text, reply_markup=keyboard, parse_mode="Markdown")
+    await state.set_state(AdminQuestionCreation.preview_options)
+
+
+@admin_testing_router.callback_query(F.data.startswith("edit_option_"), AdminQuestionCreation.preview_options)
+async def edit_option(callback: types.CallbackQuery, state: FSMContext):
+    """Редактировать конкретный вариант."""
+    option_num = int(callback.data.split("_")[-1]) - 1  # 0-based index
+    
+    data = await state.get_data()
+    options_list = data.get('options_list', [])
+    
+    if option_num < 0 or option_num >= len(options_list):
+        await callback.answer("Неверный номер варианта", show_alert=True)
+        return
+    
+    # Сохраняем индекс редактируемого варианта
+    await state.update_data(editing_option_index=option_num)
+    
+    # Удаляем вариант из списка и переходим к его повторному вводу
+    edited_option = options_list.pop(option_num)
+    await state.update_data(options_list=options_list)
+    
+    # Устанавливаем текст варианта для редактирования
+    await state.update_data(current_option_text=edited_option['text'])
+    
+    # Переходим к отметке правильности (как при обычном добавлении)
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="✅ Да, правильный")],
+            [KeyboardButton(text="❌ Нет, неправильный")]
+        ],
+        resize_keyboard=True
+    )
+    
+    await callback.message.answer(
+        f"Редактирование варианта {option_num + 1}:\n"
+        f"Текущий текст: {edited_option['text']}\n\n"
+        f"Введите новый текст варианта:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    # Сначала запросим новый текст, затем правильность
+    await state.set_state(AdminQuestionCreation.enter_option_text)
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "add_new_option", AdminQuestionCreation.preview_options)
+async def add_new_option_from_preview(callback: types.CallbackQuery, state: FSMContext):
+    """Добавить новый вариант из режима предпросмотра."""
+    await state.set_state(AdminQuestionCreation.enter_option_text)
+    await callback.message.answer(
+        "Введите текст нового варианта ответа:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "delete_all_options", AdminQuestionCreation.preview_options)
+async def delete_all_options(callback: types.CallbackQuery, state: FSMContext):
+    """Удалить все варианты."""
+    await state.update_data(options_list=[])
+    await callback.message.answer(
+        "Все варианты удалены. Начнем заново.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(AdminQuestionCreation.enter_option_text)
+    await callback.message.answer("Введите текст первого варианта ответа:")
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "save_options_as_is", AdminQuestionCreation.preview_options)
+async def save_options_from_preview(callback: types.CallbackQuery, state: FSMContext):
+    """Сохранить варианты из режима предпросмотра."""
+    data = await state.get_data()
+    options_list = data.get('options_list', [])
+    
+    if not options_list:
+        await callback.answer("Добавьте хотя бы один вариант!", show_alert=True)
+        return
+    
+    # Проверяем, есть ли правильные варианты
+    has_correct = any(opt['is_correct'] for opt in options_list)
+    if not has_correct:
+        await callback.answer(
+            "⚠️ Ни один вариант не отмечен как правильный!\n"
+            "Хотя бы один вариант должен быть правильным.",
+            show_alert=True
+        )
+        return
+    
+    await save_question_with_options(callback.message, state)
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "back_to_adding", AdminQuestionCreation.preview_options)
+async def back_to_adding_from_preview(callback: types.CallbackQuery, state: FSMContext):
+    """Вернуться к добавлению вариантов."""
+    data = await state.get_data()
+    options_list = data.get('options_list', [])
+    
+    options_text = "📋 Текущие варианты:\n\n"
+    for i, opt in enumerate(options_list, 1):
+        prefix = "✅ " if opt['is_correct'] else "❌ "
+        options_text += f"{i}. {prefix}{opt['text']}\n"
+    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Добавить ещё вариант")],
+            [KeyboardButton(text="👁 Предпросмотр и редактирование")],
+            [KeyboardButton(text="💾 Сохранить и продолжить")]
+        ],
+        resize_keyboard=True
+    )
+    
+    await callback.message.answer(
+        f"{options_text}\n"
+        "Выберите действие:",
+        reply_markup=keyboard
+    )
+    await state.set_state(AdminQuestionCreation.add_more_options)
+    await callback.answer()
+
+
+async def save_question_with_options(message: types.Message, state: FSMContext):
+    """Сохранить вопрос с вариантами."""
+    data = await state.get_data()
+    test_id = data.get('test_id')
     q_text = data.get('question_text') or ''
     q_type = data.get('question_type') or 'single'
     points = data.get('points') or 1.0
-
-    opts_raw = message.text.strip()
-
+    options_list = data.get('options_list', [])
+    
+    if not test_id:
+        await message.answer("Ошибка: тест не выбран.", reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+        return
+    
+    if not options_list:
+        await message.answer("Ошибка: варианты ответа не добавлены.", reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+        return
+    
+    # Проверяем, есть ли правильные варианты
+    has_correct = any(opt['is_correct'] for opt in options_list)
+    if not has_correct:
+        await message.answer(
+            "⚠️ Ни один вариант не отмечен как правильный!\n"
+            "Добавьте хотя бы один правильный вариант.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+    
     try:
         async with async_session() as session:
             question = Question(
@@ -193,31 +504,74 @@ async def admin_question_options(message: types.Message, state: FSMContext):
             session.add(question)
             await session.flush()
 
-            if opts_raw != '-' and q_type != 'text':
-                for opt in str(opts_raw).split('||'):
-                    opt = opt.strip()
-                    if not opt:
-                        continue
-                    is_correct = False
-                    if opt.startswith('*'):
-                        is_correct = True
-                        opt_text = opt.lstrip('*').strip()
-                    else:
-                        opt_text = opt
-                    option = Option(question_id=question.id, text=opt_text, is_correct=is_correct)
-                    session.add(option)
+            for opt in options_list:
+                option = Option(
+                    question_id=question.id,
+                    text=opt['text'],
+                    is_correct=opt['is_correct']
+                )
+                session.add(option)
 
             await session.commit()
 
-        # спросить добавить ещё
+        # Показываем итоговую информацию
+        result_text = f"✅ Вопрос сохранён!\n\n📝 Текст вопроса:\n{q_text}\n\n📋 Варианты ответа:\n"
+        
+        for i, opt in enumerate(options_list, 1):
+            prefix = "✅ " if opt['is_correct'] else "❌ "
+            result_text += f"{i}. {prefix}{opt['text']}\n"
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Добавить ещё вопрос", callback_data="add_more_yes")],
-            [InlineKeyboardButton(text="Готово", callback_data="add_more_no")]
+            [InlineKeyboardButton(text="➕ Добавить ещё вопрос", callback_data="add_more_yes")],
+            [InlineKeyboardButton(text="🏁 Завершить добавление", callback_data="add_more_no")]
         ])
-        await message.answer("Вопрос сохранён.", reply_markup=keyboard)
+        
+        await message.answer(result_text, reply_markup=keyboard)
         await state.set_state(AdminQuestionCreation.add_more)
-    except (ValueError, KeyError, AttributeError) as e:
-        await message.answer(f"Ошибка при сохранении вопроса: {e}")
+        
+    except Exception as e:
+        await message.answer(f"Ошибка при сохранении вопроса: {e}", reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+
+
+async def save_question_without_options(message: types.Message, state: FSMContext):
+    """Сохранить текстовый вопрос без вариантов."""
+    data = await state.get_data()
+    test_id = data.get('test_id')
+    q_text = data.get('question_text') or ''
+    q_type = 'text'
+    points = data.get('points') or 1.0
+
+    if not test_id:
+        await message.answer("Ошибка: тест не выбран.", reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+        return
+
+    try:
+        async with async_session() as session:
+            question = Question(
+                test_id=test_id,
+                text=q_text,
+                question_type=q_type,
+                points=points,
+                order_num=0
+            )
+            session.add(question)
+            await session.commit()
+
+        # Показываем итоговую информацию
+        result_text = f"✅ Текстовый вопрос сохранён!\n\n📝 Текст вопроса:\n{q_text}\n\nℹ️ Для этого вопроса пользователь должен будет ввести текстовый ответ."
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить ещё вопрос", callback_data="add_more_yes")],
+            [InlineKeyboardButton(text="🏁 Завершить добавление", callback_data="add_more_no")]
+        ])
+        
+        await message.answer(result_text, reply_markup=keyboard)
+        await state.set_state(AdminQuestionCreation.add_more)
+        
+    except Exception as e:
+        await message.answer(f"Ошибка при сохранении вопроса: {e}", reply_markup=ReplyKeyboardRemove())
         await state.clear()
 
 
@@ -231,7 +585,7 @@ async def admin_add_more_yes(callback: types.CallbackQuery, state: FSMContext):
 @admin_testing_router.callback_query(F.data == "add_more_no", AdminQuestionCreation.add_more)
 async def admin_add_more_no(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await safe_edit(callback.message, "Добавление вопросов завершено.")
+    await safe_edit(callback.message, "✅ Добавление вопросов завершено.")
     await callback.answer()
 
 
@@ -257,7 +611,6 @@ async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-
 @admin_testing_router.callback_query(F.data == "upload_excel_test")
 async def upload_excel_start(callback: types.CallbackQuery):
     """Начать загрузку теста из Excel: выбрать курс."""
@@ -271,12 +624,6 @@ async def upload_excel_start(callback: types.CallbackQuery):
     # Тест будет создан с course_id = None
     await safe_edit(callback.message, get_text("enter_test_title", lang))
     await callback.answer()
-
-
-# Обработчик выбора курса для загрузки Excel удалён — загрузка происходит без курса (course_id=None).
-
-
-# Обработчик выбора курса для создания теста удалён — тесты создаются без привязки к курсу.
 
 
 @admin_testing_router.message(AdminTestCreation.title)

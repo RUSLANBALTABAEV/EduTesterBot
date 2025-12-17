@@ -32,6 +32,12 @@ class AdminQuestionCreation(StatesGroup):
     options = State()
     correct_option = State()
     add_more = State()
+    # Новые состояния для пошагового ввода
+    enter_option_text = State()
+    mark_option_correct = State()
+    add_more_options = State()
+    confirm_options = State()
+    preview_options = State()
 
 
 class AdminTestEdit(StatesGroup):
