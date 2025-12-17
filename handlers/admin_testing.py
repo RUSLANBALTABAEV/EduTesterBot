@@ -24,6 +24,7 @@ from db.session import async_session
 from fsm.test import AdminTestCreation, AdminQuestionCreation, AdminTestEdit
 from config.bot_config import ADMIN_ID
 from i18n.locales import get_text
+from keyboards.reply import main_menu
 
 admin_testing_router = Router()
 
@@ -577,6 +578,7 @@ async def save_question_without_options(message: types.Message, state: FSMContex
 
 @admin_testing_router.callback_query(F.data == "add_more_yes", AdminQuestionCreation.add_more)
 async def admin_add_more_yes(callback: types.CallbackQuery, state: FSMContext):
+    lang = await get_user_language(callback.from_user.id)
     await state.set_state(AdminQuestionCreation.question_text)
     await safe_edit(callback.message, "Отправьте текст следующего вопроса:")
     await callback.answer()
@@ -584,8 +586,14 @@ async def admin_add_more_yes(callback: types.CallbackQuery, state: FSMContext):
 
 @admin_testing_router.callback_query(F.data == "add_more_no", AdminQuestionCreation.add_more)
 async def admin_add_more_no(callback: types.CallbackQuery, state: FSMContext):
+    lang = await get_user_language(callback.from_user.id)
     await state.clear()
-    await safe_edit(callback.message, "✅ Добавление вопросов завершено.")
+    await callback.message.answer("✅ Добавление вопросов завершено.")
+    # Показываем главное меню администратора
+    await callback.message.answer(
+        "👤 Главное меню администратора:",
+        reply_markup=main_menu(callback.from_user.id, lang)
+    )
     await callback.answer()
 
 
@@ -771,6 +779,11 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
     if not created_test_id:
         await message.answer(get_text("upload_failed", lang, error="test id missing in state"))
         await state.clear()
+        # Показываем главное меню администратора
+        await message.answer(
+            "👤 Главное меню администратора:",
+            reply_markup=main_menu(message.from_user.id, lang)
+        )
         return
 
     # Скачать файл в память
@@ -787,6 +800,11 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
     except (ValueError, OSError) as e:
         await message.answer(get_text("upload_failed", lang, error=str(e)))
         await state.clear()
+        # Показываем главное меню администратора
+        await message.answer(
+            "👤 Главное меню администратора:",
+            reply_markup=main_menu(message.from_user.id, lang)
+        )
         return
 
     # Ожидаемые колонки: question, type, points, options
@@ -844,6 +862,11 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
         await message.answer(get_text("upload_failed", lang, error=str(e)))
     finally:
         await state.clear()
+        # Показываем главное меню администратора
+        await message.answer(
+            "👤 Главное меню администратора:",
+            reply_markup=main_menu(message.from_user.id, lang)
+        )
 
 
 @admin_testing_router.callback_query(F.data == "download_excel_template")
@@ -917,6 +940,31 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
 
     await safe_edit(callback.message, get_text("test_created", lang, title=data['title']))
     await state.clear()
+    # Показываем главное меню администратора
+    await callback.message.answer(
+        "👤 Главное меню администратора:",
+        reply_markup=main_menu(callback.from_user.id, lang)
+    )
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "cancel_test", AdminTestCreation.confirm)
+async def cancel_test_creation(callback: types.CallbackQuery, state: FSMContext):
+    """
+    Отменить создание теста.
+    
+    Args:
+        callback: Callback query
+        state: FSM контекст
+    """
+    lang = await get_user_language(callback.from_user.id)
+    await state.clear()
+    await callback.message.answer("❌ Создание теста отменено.")
+    # Показываем главное меню администратора
+    await callback.message.answer(
+        "👤 Главное меню администратора:",
+        reply_markup=main_menu(callback.from_user.id, lang)
+    )
     await callback.answer()
 
 
@@ -981,6 +1029,8 @@ async def list_all_tests(callback: types.CallbackQuery):
 @admin_testing_router.callback_query(F.data.startswith("edit_test_"))
 async def edit_test_menu(callback: types.CallbackQuery):
     """Показать меню редактирования для выбранного теста."""
+    lang = await get_user_language(callback.from_user.id)
+    
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
@@ -1001,7 +1051,7 @@ async def edit_test_menu(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="🔁 Включить/выключить", callback_data=f"toggle_test_active_{test_id}")],
         [InlineKeyboardButton(text="🗑 Удалить тест", callback_data=f"delete_test_{test_id}")],
         [InlineKeyboardButton(text="📝 Добавить вопросы", callback_data=f"add_to_test_{test_id}")],
-        [InlineKeyboardButton(text=get_text("btn_back", None), callback_data="list_all_tests")]
+        [InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="list_all_tests")]
     ])
 
     text = (
@@ -1038,6 +1088,8 @@ async def toggle_test_active(callback: types.CallbackQuery):
 
 @admin_testing_router.callback_query(F.data.startswith("delete_test_"))
 async def delete_test(callback: types.CallbackQuery):
+    lang = await get_user_language(callback.from_user.id)
+    
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
@@ -1068,6 +1120,11 @@ async def delete_test(callback: types.CallbackQuery):
         await session.commit()
 
     await safe_edit(callback.message, "🗑 Тест удалён")
+    # Показываем главное меню администратора
+    await callback.message.answer(
+        "👤 Главное меню администратора:",
+        reply_markup=main_menu(callback.from_user.id, lang)
+    )
     await callback.answer()
 
 
@@ -1094,6 +1151,8 @@ async def handle_edit_title(message: types.Message, state: FSMContext):
         return
 
     new_title = message.text.strip()
+    lang = await get_user_language(message.from_user.id)
+    
     async with async_session() as session:
         test = await session.get(Test, test_id)
         if not test:
@@ -1106,6 +1165,11 @@ async def handle_edit_title(message: types.Message, state: FSMContext):
 
     await message.answer(f"✅ Название теста обновлено: {new_title}")
     await state.clear()
+    # Показываем главное меню администратора
+    await message.answer(
+        "👤 Главное меню администратора:",
+        reply_markup=main_menu(message.from_user.id, lang)
+    )
 
 
 @admin_testing_router.callback_query(F.data.startswith("edit_test_description_"))
@@ -1131,6 +1195,8 @@ async def handle_edit_description(message: types.Message, state: FSMContext):
         return
 
     new_desc = None if message.text.strip() == '-' else message.text.strip()
+    lang = await get_user_language(message.from_user.id)
+    
     async with async_session() as session:
         test = await session.get(Test, test_id)
         if not test:
@@ -1143,6 +1209,11 @@ async def handle_edit_description(message: types.Message, state: FSMContext):
 
     await message.answer("✅ Описание обновлено.")
     await state.clear()
+    # Показываем главное меню администратора
+    await message.answer(
+        "👤 Главное меню администратора:",
+        reply_markup=main_menu(message.from_user.id, lang)
+    )
 
 
 @admin_testing_router.callback_query(F.data.startswith("test_stats_"))
