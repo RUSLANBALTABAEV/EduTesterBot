@@ -36,7 +36,7 @@ async def get_user_language(user_id: int) -> str:
             select(User).where(User.user_id == user_id)
         )
         user = result.scalar_one_or_none()
-        return user.language if user and user.language else "ru"
+        return user.language if user and user.language else None
 
 
 # ============ Админ-меню ============

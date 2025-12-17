@@ -29,7 +29,7 @@ async def get_user_language(user_id: int) -> str:
             select(User).where(User.user_id == user_id)
         )
         user = result.scalar_one_or_none()
-        return user.language if user and user.language else "ru"
+        return user.language if user and user.language else None
 
 
 @start_router.message(Command("start"))
@@ -40,7 +40,22 @@ async def cmd_start(message: types.Message) -> None:
     Args:
         message: Входящее сообщение от пользователя
     """
-    lang = await get_user_language(message.from_user.id)
+    # Проверяем, есть ли пользователь и выбран ли язык
+    async with async_session() as session:
+        result = await session.execute(
+            select(User).where(User.user_id == message.from_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+    if not user or not user.language:
+        # Просим выбрать язык при первом запуске
+        await message.answer(
+            get_text("choose_language", "ru"),
+            reply_markup=language_keyboard()
+        )
+        return
+
+    lang = user.language
     await message.answer(
         get_text("welcome", lang),
         reply_markup=main_menu(message.from_user.id, lang)
@@ -55,7 +70,20 @@ async def start_button_handler(message: types.Message) -> None:
     Args:
         message: Входящее сообщение от пользователя
     """
-    lang = await get_user_language(message.from_user.id)
+    async with async_session() as session:
+        result = await session.execute(
+            select(User).where(User.user_id == message.from_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+    if not user or not user.language:
+        await message.answer(
+            get_text("choose_language", "ru"),
+            reply_markup=language_keyboard()
+        )
+        return
+
+    lang = user.language
     await message.answer(
         get_text("welcome", lang),
         reply_markup=main_menu(message.from_user.id, lang)
@@ -112,3 +140,12 @@ async def set_language(callback: types.CallbackQuery) -> None:
         reply_markup=main_menu(callback.from_user.id, new_lang)
     )
     await callback.answer()
+
+
+@start_router.message(Command("setlang"))
+async def cmd_setlang(message: types.Message) -> None:
+    """Команда для смены языка: показывает клавиатуру выбора языка."""
+    await message.answer(
+        get_text("choose_language", "ru"),
+        reply_markup=language_keyboard()
+    )

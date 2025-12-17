@@ -21,7 +21,8 @@ class User(Base, AsyncAttrs):
     phone = Column(String(20), unique=True)
     photo = Column(String(500), nullable=True)
     document = Column(String(500), nullable=True)
-    language = Column(String(2), default='ru')
+    # language can be unset initially; default is None so bot can ask user to choose on first start
+    language = Column(String(2), nullable=True, default=None)
     is_active = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
