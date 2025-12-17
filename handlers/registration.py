@@ -4,6 +4,7 @@
 """
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
+import logging
 from sqlalchemy import select
 
 from db.models import User
@@ -14,6 +15,9 @@ from i18n.locales import get_text
 from keyboards.reply import main_menu  # Добавляем импорт
 
 registration_router = Router()
+
+# Logger
+logger = logging.getLogger(__name__)
 
 
 async def get_user_language(user_id: int) -> str:
@@ -261,28 +265,28 @@ async def process_document(message: types.Message, state: FSMContext) -> None:
                 user_id=message.from_user.id
             )
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Failed to notify admin about new user: %s", e)
         
     await state.clear()
 
 
 @registration_router.message(Registration.age)
-async def invalid_age(message: types.Message, state: FSMContext) -> None:
+async def invalid_age(message: types.Message) -> None:
     """Обработать неверный формат возраста."""
     lang = await get_user_language(message.from_user.id)
     await message.answer(get_text("enter_age", lang))
 
 
 @registration_router.message(Registration.phone)
-async def invalid_phone(message: types.Message, state: FSMContext) -> None:
+async def invalid_phone(message: types.Message) -> None:
     """Обработать неверный формат телефона."""
     lang = await get_user_language(message.from_user.id)
     await message.answer(get_text("enter_phone", lang))
 
 
 @registration_router.message(Registration.photo)
-async def invalid_photo(message: types.Message, state: FSMContext) -> None:
+async def invalid_photo(message: types.Message) -> None:
     """Обработать неверный формат фото."""
     lang = await get_user_language(message.from_user.id)
     await message.answer(get_text("send_photo", lang))

@@ -4,18 +4,31 @@
 """
 import json
 import asyncio
+import logging
+try:
+    from aiogram.exceptions import TelegramBadRequest
+except Exception:
+    # Fallback for older/newer aiogram packaging
+    try:
+        from aiogram.utils.exceptions import TelegramBadRequest
+    except Exception:
+        TelegramBadRequest = Exception
 from datetime import datetime, timedelta
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select, and_
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import NoResultFound
 
-from db.models import User, Test, Question, Option, TestResult, Course, CourseEnrollment
+from db.models import User, Test, Question, Option, TestResult
 from db.session import async_session
 from fsm.test import Testing
 from i18n.locales import get_text
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 testing_router = Router()
+
+logger = logging.getLogger(__name__)
 
 
 async def get_user_language(user_id: int) -> str:
@@ -158,6 +171,78 @@ async def start_test(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@testing_router.message(F.text.in_(["Тесты", "Tests", "Testlar"]))
+async def list_available_tests(message: types.Message) -> None:
+    """Показать список доступных тестов для пользователя."""
+    lang = await get_user_language(message.from_user.id)
+
+    # Если язык не выбран — попросим выбрать
+    if not lang:
+        from keyboards.reply import language_keyboard
+        await message.answer(get_text("choose_language", "ru"), reply_markup=language_keyboard())
+        return
+
+    async with async_session() as session:
+        now = datetime.now()
+        query = select(Test).where(Test.is_active == True)
+        tests_result = await session.execute(query)
+        tests = tests_result.scalars().all()
+
+    if not tests:
+        await message.answer(get_text("no_tests", lang))
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=test.title, callback_data=f"start_test_{test.id}")]
+        for test in tests
+    ])
+
+    await message.answer(get_text("available_tests", lang), reply_markup=keyboard)
+
+
+@testing_router.message(F.text.in_(["Мои тесты", "My Tests", "Mening testlarim"]))
+async def list_my_tests(message: types.Message) -> None:
+    """Показать список доступных (не пройденных) тестов для пользователя."""
+    lang = await get_user_language(message.from_user.id)
+
+    async with async_session() as session:
+        # Проверяем пользователя
+        user_result = await session.execute(
+            select(User).where(User.user_id == message.from_user.id)
+        )
+        user = user_result.scalar_one_or_none()
+
+        if not user or not user.is_active:
+            await message.answer(get_text("not_registered", lang))
+            return
+
+        # Получаем все активные тесты
+        tests_result = await session.execute(select(Test).where(Test.is_active == True))
+        tests = tests_result.scalars().all()
+
+        avail = []
+        for test in tests:
+            # Проверяем, завершал ли пользователь тест
+            res = await session.execute(
+                select(TestResult).where(
+                    and_(TestResult.test_id == test.id, TestResult.user_id == user.id, TestResult.completed_at.is_not(None))
+                )
+            )
+            finished = res.scalar_one_or_none()
+            if not finished:
+                avail.append(test)
+
+    if not avail:
+        await message.answer(get_text("no_my_tests", lang))
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t.title, callback_data=f"start_test_{t.id}")] for t in avail
+    ])
+
+    await message.answer(get_text("available_tests", lang), reply_markup=keyboard)
+
+
 async def show_question(message: types.Message, state: FSMContext):
     """
     Показать текущий вопрос.
@@ -169,49 +254,81 @@ async def show_question(message: types.Message, state: FSMContext):
     data = await state.get_data()
     current_idx = data['current_question']
     question_id = data['questions'][current_idx]
-    
+    answers = data.get('answers', {})
+    selected_for_q = answers.get(question_id, [])
+
     async with async_session() as session:
-        # Получаем вопрос
-        question_result = await session.execute(
-            select(Question).where(Question.id == question_id)
-        )
-        question = question_result.scalar_one_or_none()
-        
-        # Получаем варианты ответов
-        options_result = await session.execute(
-            select(Option).where(Option.question_id == question_id)
-        )
-        options = options_result.scalars().all()
-        
-        # Создаем клавиатуру с вариантами
-        keyboard = []
-        for i, option in enumerate(options, 1):
+        try:
+            # Получаем вопрос
+            question_result = await session.execute(
+                select(Question).options(selectinload(Question.options)).where(Question.id == question_id)
+            )
+            question = question_result.scalar_one()
+
+            # Проверяем, что вопрос найден
+            if not question:
+                await message.answer("Ошибка: вопрос не найден.")
+                return
+
+            # Получаем варианты ответов
+            options = question.options
+
+            # Создаем клавиатуру с вариантами
+            keyboard = []
+            for i, option in enumerate(options, 1):
+                prefix = "✅ " if option.id in selected_for_q else ""
+                keyboard.append([
+                    InlineKeyboardButton(
+                        text=f"{prefix}{i}. {option.text[:100]}",
+                        callback_data=f"answer_{question_id}_{option.id}"
+                    )
+                ])
+
+            # Добавляем кнопку пропуска
             keyboard.append([
                 InlineKeyboardButton(
-                    text=f"{i}. {option.text[:100]}...",
-                    callback_data=f"answer_{question_id}_{option.id}"
+                    text="⏭ Пропустить",
+                    callback_data=f"skip_{question_id}"
                 )
             ])
-        
-        # Добавляем кнопку пропуска
-        keyboard.append([
-            InlineKeyboardButton(
-                text="⏭ Пропустить",
-                callback_data=f"skip_{question_id}"
-            )
-        ])
-        
-        # Отправляем вопрос
-        text = f"Вопрос {current_idx + 1} из {len(data['questions'])}\n\n"
-        text += f"{question.text}\n\n"
-        
-        if question.question_type == 'multiple':
-            text += "(Выберите все правильные ответы)"
-        
-        await message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-        )
+
+            # Для multiple вопросов добавляем кнопку подтверждения выбора
+            if question.question_type == 'multiple':
+                keyboard.append([
+                    InlineKeyboardButton(
+                        text="✅ Готово",
+                        callback_data=f"finish_{question_id}"
+                    )
+                ])
+
+            # Отправляем вопрос
+            text = f"Вопрос {current_idx + 1} из {len(data['questions'])}\n\n"
+            text += f"{question.text}\n\n"
+
+            if question.question_type == 'multiple':
+                text += "(Выберите все правильные ответы)"
+
+            try:
+                if message is None:
+                    return
+                await message.edit_text(
+                    text,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+                )
+            except TelegramBadRequest as e:
+                # Игнорируем ошибку, когда контент не изменился
+                # и логируем прочие ошибки
+                msg = str(e)
+                if 'message is not modified' in msg:
+                    logger.debug('Edit skipped: message not modified for question %s', question_id)
+                else:
+                    logger.exception('TelegramBadRequest while editing question %s: %s', question_id, e)
+        except NoResultFound:
+            logger.error("Question with ID %s not found in the database.", question_id)
+            await message.answer("Ошибка: вопрос не найден.")
+        except AttributeError as e:
+            logger.error("Attribute error: %s", e)
+            await message.answer("Ошибка: некорректные данные.")
 
 
 @testing_router.callback_query(F.data.startswith("answer_"))
@@ -252,13 +369,39 @@ async def process_answer(callback: types.CallbackQuery, state: FSMContext):
     
     await state.update_data(answers=answers)
     
-    # Показываем следующий вопрос или завершаем тест
+    # Для одиночного выбора сразу переходим к следующему вопросу,
+    # для множественного — оставляем пользователя выбирать несколько и
+    # ждём нажатия кнопки подтверждения.
+    if question.question_type == 'single':
+        if current_idx + 1 < len(data['questions']):
+            await state.update_data(current_question=current_idx + 1)
+            await show_question(callback.message, state)
+        else:
+            await complete_test(callback.message, state)
+    else:
+        # Обновляем отображение текущего вопроса (чтобы можно было увидеть изменения)
+        await show_question(callback.message, state)
+    
+    await callback.answer()
+
+
+@testing_router.callback_query(F.data.startswith("finish_"))
+async def finish_question(callback: types.CallbackQuery, state: FSMContext):
+    """
+    Обработчик подтверждения ответа для multiple вопросов.
+    """
+    parts = callback.data.split("_")
+    question_id = int(parts[-1])
+
+    data = await state.get_data()
+    current_idx = data['current_question']
+
     if current_idx + 1 < len(data['questions']):
         await state.update_data(current_question=current_idx + 1)
         await show_question(callback.message, state)
     else:
         await complete_test(callback.message, state)
-    
+
     await callback.answer()
 
 

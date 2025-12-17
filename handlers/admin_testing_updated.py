@@ -11,7 +11,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import pandas as pd
 from sqlalchemy import select, and_
 
-from db.models import Course, Test, Question, Option, TestResult, User
+from db.models import Test, Question, Option, TestResult, User
 from db.session import async_session
 from fsm.test import AdminTestCreation, AdminQuestionCreation
 from config.bot_config import ADMIN_ID
@@ -56,7 +56,7 @@ async def manage_tests(callback: types.CallbackQuery):
     ])
 
     await callback.message.edit_text(
-        get_text("manage_testing_title", lang) + "\n\n" + get_text("choose_course_for_test", lang),
+        get_text("manage_testing_title", lang),
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -90,30 +90,22 @@ async def list_all_tests(callback: types.CallbackQuery):
     
     async with async_session() as session:
         for test in tests:
-            # Получаем курс
-            course_result = await session.execute(
-                select(Course).where(Course.id == test.course_id)
-            )
-            course = course_result.scalar_one_or_none()
-            
             # Считаем количество вопросов
             questions_result = await session.execute(
                 select(Question).where(Question.test_id == test.id)
             )
             questions_count = len(questions_result.scalars().all())
-            
+
             # Считаем количество прохождений
             results_result = await session.execute(
                 select(TestResult).where(TestResult.test_id == test.id)
             )
             results_count = len(results_result.scalars().all())
-            
+
             status = "✅" if test.is_active else "❌"
-            course_name = course.title if course else "Курс удален"
-            
+
             text += (
                 f"{status} <b>{test.title}</b>\n"
-                f"   📚 Курс: {course_name}\n"
                 f"   📝 Вопросов: {questions_count}/{test.total_questions}\n"
                 f"   👥 Прохождений: {results_count}\n"
                 f"   ⏱ Время: {test.time_limit or 'без ограничения'} мин.\n"
@@ -144,46 +136,17 @@ async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
     
-    async with async_session() as session:
-        result = await session.execute(select(Course))
-        courses = result.scalars().all()
-    
-    if not courses:
-        await callback.answer("Нет доступных курсов", show_alert=True)
-        return
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=course.title, callback_data=f"select_course_{course.id}")]
-        for course in courses
-    ] + [[InlineKeyboardButton(text="❌ Отмена", callback_data="manage_tests")]])
-    
-    await callback.message.edit_text(
-        "Выберите курс для теста:",
-        reply_markup=keyboard
-    )
-    await state.set_state(AdminTestCreation.select_course)
-    await callback.answer()
-
-
-@admin_testing_router.callback_query(
-    F.data.startswith("select_course_"),
-    AdminTestCreation.select_course
-)
-async def select_course_for_test(callback: types.CallbackQuery, state: FSMContext):
-    """
-    Выбрать курс для теста.
-    
-    Args:
-        callback: Callback query
-        state: FSM контекст
-    """
-    parts = callback.data.split("_")
-    course_id = int(parts[-1])
-    await state.update_data(course_id=course_id)
+    # Переводим создание теста в режим ввода данных без выбора курса.
+    # Тесты теперь создаются без привязки к курсу (course_id = None).
+    await state.update_data(course_id=None)
     await state.set_state(AdminTestCreation.title)
-    
-    await callback.message.edit_text("Введите название теста:")
+    await callback.message.edit_text(
+        "Введите название теста:",
+    )
     await callback.answer()
+
+
+# Ранее здесь был обработчик выбора курса, он удалён — тесты создаются без курса.
 
 
 @admin_testing_router.message(AdminTestCreation.title)
@@ -291,10 +254,9 @@ async def set_scheduled_time(message: types.Message, state: FSMContext):
     
     # Показываем подтверждение
     data = await state.get_data()
-    
+
     text = (
         f"📋 <b>Подтверждение создания теста:</b>\n\n"
-        f"• Курс ID: {data['course_id']}\n"
         f"• Название: {data['title']}\n"
         f"• Описание: {data['description'] or 'нет'}\n"
         f"• Вопросов: {data['total_questions']}\n"
@@ -328,7 +290,6 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
     
     async with async_session() as session:
         test = Test(
-            course_id=data['course_id'],
             title=data['title'],
             description=data['description'],
             total_questions=data['total_questions'],

@@ -32,3 +32,9 @@ class AdminQuestionCreation(StatesGroup):
     options = State()
     correct_option = State()
     add_more = State()
+
+
+class AdminTestEdit(StatesGroup):
+    """Состояния для редактирования теста администратором."""
+    title = State()
+    description = State()

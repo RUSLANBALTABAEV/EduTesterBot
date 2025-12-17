@@ -1,5 +1,4 @@
-# handlers/tests.py
-"""Обёртка: `tests` — совместимость с переименованием `courses`."""
-from .courses import courses_router as tests_router
+"""Adapter: expose `tests_router` from `testing` module (courses removed)."""
+from .testing import testing_router as tests_router
 
 __all__ = ['tests_router']

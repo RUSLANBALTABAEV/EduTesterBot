@@ -28,38 +28,10 @@ class User(Base, AsyncAttrs):
     
     # Отношения
     test_results = relationship("TestResult", back_populates="user")
-    enrolled_courses = relationship("CourseEnrollment", back_populates="user")
+    # enrolled_courses removed — courses feature deprecated
 
 
-class Course(Base, AsyncAttrs):
-    """Модель курса."""
-    __tablename__ = 'courses'
-    
-    id = Column(Integer, primary_key=True)
-    title = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    price = Column(Integer, default=0)
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Отношения
-    enrollments = relationship("CourseEnrollment", back_populates="course")
-    tests = relationship("Test", back_populates="course")
-
-
-class CourseEnrollment(Base, AsyncAttrs):
-    """Модель записи на курс."""
-    __tablename__ = 'course_enrollments'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    course_id = Column(Integer, ForeignKey('courses.id'), nullable=True)
-    enrolled_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Отношения
-    user = relationship("User", back_populates="enrolled_courses")
-    course = relationship("Course", back_populates="enrollments")
+# Course and CourseEnrollment removed — courses feature deprecated
 
 
 class Test(Base, AsyncAttrs):
@@ -67,7 +39,7 @@ class Test(Base, AsyncAttrs):
     __tablename__ = 'tests'
     
     id = Column(Integer, primary_key=True)
-    course_id = Column(Integer, ForeignKey('courses.id'))
+    # course_id removed — tests are no longer tied to courses
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     total_questions = Column(Integer, default=50)
@@ -78,7 +50,7 @@ class Test(Base, AsyncAttrs):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Отношения
-    course = relationship("Course", back_populates="tests")
+    # course relationship removed
     questions = relationship("Question", back_populates="test")
     results = relationship("TestResult", back_populates="test")
 

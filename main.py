@@ -15,10 +15,9 @@ from handlers.auth import auth_router
 from handlers.registration import registration_router
 from handlers.tests import tests_router  # ИЗМЕНЕНО: заменяет courses
 from handlers.my_tests import my_tests_router  # ИЗМЕНЕНО: заменяет my_courses
-from handlers.testing import testing_router
 from handlers.admin import admin_router
 from handlers.admin_testing import admin_testing_router
-from handlers.test_results import results_router  # НОВОЕ
+# `tests_router` and `my_tests_router` already point to testing/results routers respectively
 
 
 async def create_tables():
@@ -43,10 +42,8 @@ async def main():
     dp.include_router(registration_router)
     dp.include_router(tests_router)  # ИЗМЕНЕНО
     dp.include_router(my_tests_router)  # ИЗМЕНЕНО
-    dp.include_router(testing_router)
     dp.include_router(admin_router)
     dp.include_router(admin_testing_router)
-    dp.include_router(results_router)  # НОВОЕ
     
     try:
         # Запуск бота

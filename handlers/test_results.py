@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select, and_
 from datetime import datetime
 
-from db.models import User, TestResult, Test, Course
+from db.models import User, TestResult, Test
 from db.session import async_session
 from i18n.locales import get_text
 
@@ -120,13 +120,7 @@ async def view_result_detail(callback: types.CallbackQuery) -> None:
         )
         test = test_query.scalar_one_or_none()
         
-        # Получаем информацию о курсе
-        course = None
-        if test:
-            course_query = await session.execute(
-                select(Course).where(Course.id == test.course_id)
-            )
-            course = course_query.scalar_one_or_none()
+        # Информация о курсе удалена из проекта — не отображаем её.
         
         # Формируем детальную информацию
         percentage = (result.score / result.max_score * 100) if result.max_score > 0 else 0
@@ -134,8 +128,7 @@ async def view_result_detail(callback: types.CallbackQuery) -> None:
         
         text = "📊 <b>Детали результата</b>\n\n"
         
-        if course:
-            text += f"📚 <b>Курс:</b> {course.title}\n"
+        # Курс больше не отображается
         
         if test:
             text += f"📝 <b>Тест:</b> {test.title}\n"
@@ -213,12 +206,7 @@ async def save_result(callback: types.CallbackQuery) -> None:
         )
         test = test_query.scalar_one_or_none()
         
-        course = None
-        if test:
-            course_query = await session.execute(
-                select(Course).where(Course.id == test.course_id)
-            )
-            course = course_query.scalar_one_or_none()
+        # Курс удалён из текстового файла результата — не добавляем его
         
         # Формируем текст для сохранения
         percentage = (result.score / result.max_score * 100) if result.max_score > 0 else 0
@@ -231,8 +219,7 @@ async def save_result(callback: types.CallbackQuery) -> None:
         text += f"Студент: {user.name}\n"
         text += f"Телефон: {user.phone}\n\n"
         
-        if course:
-            text += f"Курс: {course.title}\n"
+        # Не добавляем информацию о курсе
         
         if test:
             text += f"Тест: {test.title}\n\n"

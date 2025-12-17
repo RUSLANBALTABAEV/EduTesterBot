@@ -61,8 +61,10 @@ def main_menu(user_id: int, lang: str = "ru") -> ReplyKeyboardMarkup:
             KeyboardButton(text=get_text("btn_admin_panel", lang))
         )
     else:
-        # Кнопки для обычного пользователя (скрываем доступ к курсам)
-        pass
+        # Кнопки для обычного пользователя: доступ к тестированию
+        builder.row(KeyboardButton(text=get_text("btn_tests", lang)))
+        builder.row(KeyboardButton(text=get_text("btn_my_tests", lang)))
+        builder.row(KeyboardButton(text=get_text("btn_my_results", lang)))
 
     builder.row(KeyboardButton(text=get_text("btn_language", lang)))
     builder.row(KeyboardButton(text=get_text("btn_logout", lang)))

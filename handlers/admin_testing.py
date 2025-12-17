@@ -6,18 +6,45 @@ import io
 import json
 from datetime import datetime
 from aiogram import Router, F, types
+import logging
+try:
+    from aiogram.exceptions import TelegramBadRequest
+except Exception:
+    try:
+        from aiogram.utils.exceptions import TelegramBadRequest
+    except Exception:
+        TelegramBadRequest = Exception
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import pandas as pd
 from sqlalchemy import select, and_
 
-from db.models import Course, Test, Question, Option, TestResult, User
+from db.models import Test, Question, Option, TestResult, User
 from db.session import async_session
 from fsm.test import AdminTestCreation, AdminQuestionCreation
+from fsm.test import AdminTestEdit
 from config.bot_config import ADMIN_ID
 from i18n.locales import get_text
 
 admin_testing_router = Router()
+
+logger = logging.getLogger(__name__)
+
+
+async def safe_edit(message: types.Message | None, text: str, **kwargs):
+    """Try to edit message text; ignore 'message is not modified' errors."""
+    if message is None:
+        return
+    try:
+        await message.edit_text(text, **kwargs)
+    except TelegramBadRequest as e:
+        msg = str(e)
+        if 'message is not modified' in msg:
+            logger.debug('Edit skipped (not modified) for message id %s', getattr(message, 'message_id', None))
+            return
+        logger.exception('TelegramBadRequest on edit_text: %s', e)
+    except Exception as e:
+        logger.exception('Unexpected error while editing message: %s', e)
 
 
 async def get_user_language(user_id: int) -> str:
@@ -47,6 +74,7 @@ async def manage_tests(callback: types.CallbackQuery):
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=get_text("btn_create_test", lang), callback_data="create_test")],
+        [InlineKeyboardButton(text="📋 Список тестов", callback_data="list_all_tests")],
         [InlineKeyboardButton(text=get_text("btn_upload_excel", lang) if "btn_upload_excel" in [] else "📤 Загрузить тест из Excel", callback_data="upload_excel_test")],
         [InlineKeyboardButton(text=get_text("btn_download_template", lang) if "btn_download_template" in [] else "📥 Скачать шаблон Excel", callback_data="download_excel_template")],
         [InlineKeyboardButton(text=get_text("btn_add_questions", lang), callback_data="add_questions")],
@@ -54,10 +82,7 @@ async def manage_tests(callback: types.CallbackQuery):
         [InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="admin_menu")]
     ])
 
-    await callback.message.edit_text(
-        get_text("manage_testing_title", lang),
-        reply_markup=keyboard
-    )
+    await safe_edit(callback.message, get_text("manage_testing_title", lang), reply_markup=keyboard)
     await callback.answer()
 
 
@@ -83,7 +108,7 @@ async def add_questions_start(callback: types.CallbackQuery):
         for test in tests
     ] + [[InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="manage_tests")]])
 
-    await callback.message.edit_text(get_text("choose_test_for_results", lang), reply_markup=keyboard)
+    await safe_edit(callback.message, get_text("choose_test_for_results", lang), reply_markup=keyboard)
     await callback.answer()
 
 
@@ -101,7 +126,7 @@ async def add_to_test_select(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(test_id=test_id)
     await state.set_state(AdminQuestionCreation.question_text)
 
-    await callback.message.edit_text(get_text("enter_question_text", lang) if "enter_question_text" in [] else "Отправьте текст вопроса:")
+    await safe_edit(callback.message, get_text("enter_question_text", lang) if "enter_question_text" in [] else "Отправьте текст вопроса:")
     await callback.answer()
 
 
@@ -129,7 +154,7 @@ async def admin_question_type(callback: types.CallbackQuery, state: FSMContext):
     qtype = callback.data.split("_")[1]
     await state.update_data(question_type=qtype)
     await state.set_state(AdminQuestionCreation.points)
-    await callback.message.edit_text("Укажите количество баллов за вопрос (например, 1):")
+    await safe_edit(callback.message, "Укажите количество баллов за вопрос (например, 1):")
     await callback.answer()
 
 
@@ -209,14 +234,14 @@ async def admin_question_options(message: types.Message, state: FSMContext):
 @admin_testing_router.callback_query(F.data == "add_more_yes", AdminQuestionCreation.add_more)
 async def admin_add_more_yes(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(AdminQuestionCreation.question_text)
-    await callback.message.edit_text("Отправьте текст следующего вопроса:")
+    await safe_edit(callback.message, "Отправьте текст следующего вопроса:")
     await callback.answer()
 
 
 @admin_testing_router.callback_query(F.data == "add_more_no", AdminQuestionCreation.add_more)
 async def admin_add_more_no(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("Добавление вопросов завершено.")
+    await safe_edit(callback.message, "Добавление вопросов завершено.")
     await callback.answer()
 
 
@@ -235,22 +260,10 @@ async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(get_text("no_access", lang), show_alert=True)
         return
     
-    async with async_session() as session:
-        result = await session.execute(select(Course))
-        courses = result.scalars().all()
-
-    # Показываем список курсов и кнопку "без курса"
-    keyboard_rows = [[InlineKeyboardButton(text=course.title, callback_data=f"select_course_{course.id}")] for course in courses]
-    keyboard_rows.append([InlineKeyboardButton(text=get_text("btn_no_course", lang), callback_data="select_course_none")])
-    keyboard_rows.append([InlineKeyboardButton(text=get_text("cancel", lang), callback_data="admin_menu")])
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
-
-    await callback.message.edit_text(
-        get_text("choose_course_for_test", lang),
-        reply_markup=keyboard
-    )
-    await state.set_state(AdminTestCreation.select_course)
+    # Создаём тест без выбора курса (course_id = None)
+    await state.update_data(course_id=None)
+    await state.set_state(AdminTestCreation.title)
+    await safe_edit(callback.message, get_text("enter_test_title", lang))
     await callback.answer()
 
 
@@ -264,60 +277,16 @@ async def upload_excel_start(callback: types.CallbackQuery):
         await callback.answer(get_text("no_access", lang), show_alert=True)
         return
 
-    async with async_session() as session:
-        result = await session.execute(select(Course))
-        courses = result.scalars().all()
-
-    keyboard_rows = [[InlineKeyboardButton(text=course.title, callback_data=f"upload_course_{course.id}")] for course in courses]
-    keyboard_rows.append([InlineKeyboardButton(text=get_text("btn_no_course", lang), callback_data="upload_course_none")])
-    keyboard_rows.append([InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="admin_menu")])
-
-    await callback.message.edit_text(get_text("choose_course_for_test", lang), reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_rows))
+    # Переходим к загрузке Excel без привязки к курсу
+    # Тест будет создан с course_id = None
+    await safe_edit(callback.message, get_text("enter_test_title", lang))
     await callback.answer()
 
 
-@admin_testing_router.callback_query(F.data.startswith("upload_course_"))
-async def upload_course_select(callback: types.CallbackQuery, state: FSMContext):
-    """Выбран курс для загрузки из Excel — запрашиваем название теста."""
-    lang = await get_user_language(callback.from_user.id)
-    data_parts = callback.data.split("_")
-    if data_parts[-1] == 'none':
-        course_id = None
-    else:
-        course_id = int(data_parts[2])
-
-    await state.update_data(course_id=course_id, upload_mode=True)
-    await state.set_state(AdminTestCreation.title)
-
-    await callback.message.edit_text(get_text("enter_test_title", lang))
-    await callback.answer()
+# Обработчик выбора курса для загрузки Excel удалён — загрузка происходит без курса (course_id=None).
 
 
-@admin_testing_router.callback_query(
-    F.data.startswith("select_course_"),
-    AdminTestCreation.select_course
-)
-async def select_course_for_test(callback: types.CallbackQuery, state: FSMContext):
-    """
-    Выбрать курс для теста.
-    
-    Args:
-        callback: Callback query
-        state: FSM контекст
-    """
-    lang = await get_user_language(callback.from_user.id)
-
-    data_parts = callback.data.split("_")
-    if data_parts[-1] == 'none':
-        course_id = None
-    else:
-        course_id = int(data_parts[2])
-
-    await state.update_data(course_id=course_id)
-    await state.set_state(AdminTestCreation.title)
-
-    await callback.message.edit_text(get_text("enter_test_title", lang))
-    await callback.answer()
+# Обработчик выбора курса для создания теста удалён — тесты создаются без привязки к курсу.
 
 
 @admin_testing_router.message(AdminTestCreation.title)
@@ -436,20 +405,8 @@ async def set_scheduled_time(message: types.Message, state: FSMContext):
     # Показываем подтверждение
     data = await state.get_data()
     
-    # Показать название курса или метку "без курса"
-    course_label = get_text("no_course_selected", lang)
-    if data.get('course_id'):
-        try:
-            async with async_session() as session:
-                course_obj = await session.get(Course, data.get('course_id'))
-                if course_obj:
-                    course_label = course_obj.title
-        except Exception:
-            pass
-
     text = (
         f"📋 Подтверждение создания теста:\n\n"
-        f"• Курс: {course_label}\n"
         f"• Название: {data['title']}\n"
         f"• Описание: {data['description'] or 'нет'}\n"
         f"• Вопросов: {data['total_questions']}\n"
@@ -599,7 +556,6 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
     
     async with async_session() as session:
         test = Test(
-            course_id=data.get('course_id'),
             title=data['title'],
             description=data['description'],
             total_questions=data['total_questions'],
@@ -617,12 +573,12 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
     if data.get('upload_mode'):
         # сохраняем id созданного теста в state
         await state.update_data(created_test_id=test.id)
-        await callback.message.edit_text(get_text("test_created", lang, title=data['title']) + "\n" + get_text("send_excel_file", lang))
+        await safe_edit(callback.message, get_text("test_created", lang, title=data['title']) + "\n" + get_text("send_excel_file", lang))
         await state.set_state(AdminTestCreation.upload_file)
         await callback.answer()
         return
 
-    await callback.message.edit_text(get_text("test_created", lang, title=data['title']))
+    await safe_edit(callback.message, get_text("test_created", lang, title=data['title']))
     await state.clear()
     await callback.answer()
 
@@ -655,11 +611,201 @@ async def show_test_results(callback: types.CallbackQuery):
         for test in tests
     ] + [[InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="manage_tests")]])
 
-    await callback.message.edit_text(
-        get_text("choose_test_for_results", lang),
-        reply_markup=keyboard
-    )
+    await safe_edit(callback.message, get_text("choose_test_for_results", lang), reply_markup=keyboard)
     await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "list_all_tests")
+async def list_all_tests(callback: types.CallbackQuery):
+    """Показать список всех тестов с возможностью редактирования."""
+    lang = await get_user_language(callback.from_user.id)
+
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer(get_text("no_access", lang), show_alert=True)
+        return
+
+    async with async_session() as session:
+        tests_result = await session.execute(select(Test).order_by(Test.created_at.desc()))
+        tests = tests_result.scalars().all()
+
+    if not tests:
+        await callback.answer(get_text("no_tests", lang), show_alert=True)
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=test.title, callback_data=f"edit_test_{test.id}")]
+        for test in tests
+    ] + [[InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="manage_tests")]])
+
+    await safe_edit(callback.message, "📋 Список тестов:", reply_markup=keyboard)
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data.startswith("edit_test_"))
+async def edit_test_menu(callback: types.CallbackQuery):
+    """Показать меню редактирования для выбранного теста."""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Нет доступа", show_alert=True)
+        return
+
+    parts = callback.data.split("_")
+    test_id = int(parts[-1])
+
+    async with async_session() as session:
+        test = await session.get(Test, test_id)
+
+    if not test:
+        await callback.answer("Тест не найден", show_alert=True)
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Редактировать название", callback_data=f"edit_test_title_{test_id}")],
+        [InlineKeyboardButton(text="✏️ Редактировать описание", callback_data=f"edit_test_description_{test_id}")],
+        [InlineKeyboardButton(text="🔁 Включить/выключить", callback_data=f"toggle_test_active_{test_id}")],
+        [InlineKeyboardButton(text="🗑 Удалить тест", callback_data=f"delete_test_{test_id}")],
+        [InlineKeyboardButton(text="📝 Добавить вопросы", callback_data=f"add_to_test_{test_id}")],
+        [InlineKeyboardButton(text=get_text("btn_back", None), callback_data="list_all_tests")]
+    ])
+
+    text = (
+        f"📋 <b>Редактирование теста:</b>\n\n"
+        f"• Название: {test.title}\n"
+        f"• Описание: {test.description or 'нет'}\n"
+        f"• Вопросов (ожидается): {test.total_questions}\n"
+        f"• Активен: {'Да' if test.is_active else 'Нет'}\n"
+    )
+
+    await safe_edit(callback.message, text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data.startswith("toggle_test_active_"))
+async def toggle_test_active(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Нет доступа", show_alert=True)
+        return
+
+    test_id = int(callback.data.split("_")[-1])
+    async with async_session() as session:
+        test = await session.get(Test, test_id)
+        if not test:
+            await callback.answer("Тест не найден", show_alert=True)
+            return
+        test.is_active = not bool(test.is_active)
+        session.add(test)
+        await session.commit()
+
+    await callback.answer("Статус изменён")
+    await safe_edit(callback.message, f"Статус теста обновлён. Активен: {'Да' if test.is_active else 'Нет'}")
+
+
+@admin_testing_router.callback_query(F.data.startswith("delete_test_"))
+async def delete_test(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Нет доступа", show_alert=True)
+        return
+
+    test_id = int(callback.data.split("_")[-1])
+    async with async_session() as session:
+        test = await session.get(Test, test_id)
+        if not test:
+            await callback.answer("Тест не найден", show_alert=True)
+            return
+
+        # Удаляем вопросы, варианты и результаты вручную
+        questions_result = await session.execute(select(Question).where(Question.test_id == test_id))
+        questions = questions_result.scalars().all()
+        for q in questions:
+            opts_result = await session.execute(select(Option).where(Option.question_id == q.id))
+            opts = opts_result.scalars().all()
+            for o in opts:
+                await session.delete(o)
+            await session.delete(q)
+
+        results_result = await session.execute(select(TestResult).where(TestResult.test_id == test_id))
+        results = results_result.scalars().all()
+        for r in results:
+            await session.delete(r)
+
+        await session.delete(test)
+        await session.commit()
+
+    await safe_edit(callback.message, "🗑 Тест удалён")
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data.startswith("edit_test_title_"))
+async def edit_test_title_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    test_id = int(callback.data.split("_")[-1])
+    await state.update_data(edit_test_id=test_id)
+    await state.set_state(AdminTestEdit.title)
+    await safe_edit(callback.message, "Введите новое название теста:")
+    await callback.answer()
+
+
+@admin_testing_router.message(AdminTestEdit.title)
+async def handle_edit_title(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    data = await state.get_data()
+    test_id = data.get('edit_test_id')
+    if not test_id:
+        await message.answer("ID теста не указан")
+        await state.clear()
+        return
+
+    new_title = message.text.strip()
+    async with async_session() as session:
+        test = await session.get(Test, test_id)
+        if not test:
+            await message.answer("Тест не найден")
+            await state.clear()
+            return
+        test.title = new_title
+        session.add(test)
+        await session.commit()
+
+    await message.answer(f"✅ Название теста обновлено: {new_title}")
+    await state.clear()
+
+
+@admin_testing_router.callback_query(F.data.startswith("edit_test_description_"))
+async def edit_test_description_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    test_id = int(callback.data.split("_")[-1])
+    await state.update_data(edit_test_id=test_id)
+    await state.set_state(AdminTestEdit.description)
+    await safe_edit(callback.message, "Введите новое описание теста (или '-' для очистки):")
+    await callback.answer()
+
+
+@admin_testing_router.message(AdminTestEdit.description)
+async def handle_edit_description(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    data = await state.get_data()
+    test_id = data.get('edit_test_id')
+    if not test_id:
+        await message.answer("ID теста не указан")
+        await state.clear()
+        return
+
+    new_desc = None if message.text.strip() == '-' else message.text.strip()
+    async with async_session() as session:
+        test = await session.get(Test, test_id)
+        if not test:
+            await message.answer("Тест не найден")
+            await state.clear()
+            return
+        test.description = new_desc
+        session.add(test)
+        await session.commit()
+
+    await message.answer("✅ Описание обновлено.")
+    await state.clear()
 
 
 @admin_testing_router.callback_query(F.data.startswith("test_stats_"))
@@ -710,7 +856,7 @@ async def show_test_statistics(callback: types.CallbackQuery):
             [InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="test_results")]
         ])
     
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await safe_edit(callback.message, text, reply_markup=keyboard)
     await callback.answer()
 
 
