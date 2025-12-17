@@ -26,8 +26,7 @@ def _is_admin(user_id: int) -> bool:
         True, если пользователь администратор, иначе False
     """
     try:
-        if isinstance(ADMIN_ID, (list, tuple, set)):
-            return int(user_id) in [int(x) for x in ADMIN_ID]
+
         return int(user_id) == int(ADMIN_ID)
     except (ValueError, TypeError):
         return False

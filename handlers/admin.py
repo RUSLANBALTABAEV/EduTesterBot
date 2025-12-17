@@ -10,6 +10,7 @@ from aiogram.types import (
     CallbackQuery,
     Message
 )
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 
@@ -103,7 +104,7 @@ async def back_to_admin_menu(
             get_text("admin_main_title", lang),
             reply_markup=keyboard
         )
-    except Exception:
+    except TelegramBadRequest:
         await callback.message.answer(
             get_text("admin_main_title", lang),
             reply_markup=keyboard
@@ -139,7 +140,7 @@ async def show_users(callback: CallbackQuery) -> None:
                     [InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="admin_menu")]
                 ])
             )
-        except Exception:
+        except TelegramBadRequest:
             await callback.message.answer(
                 get_text("users_empty", lang),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -179,7 +180,7 @@ async def show_users(callback: CallbackQuery) -> None:
                 )
             else:
                 await callback.message.answer(text, reply_markup=keyboard)
-        except Exception:
+        except TelegramBadRequest:
             error_text = text + "\n\n⚠️ Не удалось отправить фото."
             await callback.message.answer(
                 error_text,
@@ -231,7 +232,7 @@ async def delete_user(callback: CallbackQuery) -> None:
             ])
         )
         await callback.message.delete()
-    except Exception:
+    except TelegramBadRequest:
         await callback.answer(get_text("user_deleted", lang, name=username), show_alert=True)
 
     await callback.answer()
@@ -271,7 +272,7 @@ async def delete_all_users(callback: CallbackQuery) -> None:
             ])
         )
         await callback.message.delete()
-    except Exception:
+    except TelegramBadRequest:
         await callback.answer(get_text("all_users_deleted", lang), show_alert=True)
 
     await callback.answer()

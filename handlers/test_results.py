@@ -5,7 +5,7 @@
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select, and_
-from datetime import datetime
+from datetime import timedelta
 
 from db.models import User, TestResult, Test
 from db.session import async_session
@@ -133,12 +133,12 @@ async def view_result_detail(callback: types.CallbackQuery) -> None:
         if test:
             text += f"📝 <b>Тест:</b> {test.title}\n"
         
-        text += f"\n📈 <b>Результаты:</b>\n"
+        text += "\n📈 <b>Результаты:</b>\n"
         text += f"• Баллы: {result.score:.1f} из {result.max_score}\n"
         text += f"• Процент: {percentage:.1f}%\n"
         text += f"• Оценка: {grade}\n\n"
         
-        text += f"📅 <b>Дата прохождения:</b>\n"
+        text += "📅 <b>Дата прохождения:</b>\n"
         text += f"{result.completed_at.strftime('%d.%m.%Y в %H:%M')}\n\n"
         
         # Время прохождения

@@ -3,26 +3,18 @@
 Обработчики для администрирования тестирования.
 """
 import io
-import json
 from datetime import datetime
 from aiogram import Router, F, types
 import logging
-try:
-    from aiogram.exceptions import TelegramBadRequest
-except Exception:
-    try:
-        from aiogram.utils.exceptions import TelegramBadRequest
-    except Exception:
-        TelegramBadRequest = Exception
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import pandas as pd
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
 from db.models import Test, Question, Option, TestResult, User
 from db.session import async_session
-from fsm.test import AdminTestCreation, AdminQuestionCreation
-from fsm.test import AdminTestEdit
+from fsm.test import AdminTestCreation, AdminQuestionCreation, AdminTestEdit
 from config.bot_config import ADMIN_ID
 from i18n.locales import get_text
 
@@ -43,8 +35,6 @@ async def safe_edit(message: types.Message | None, text: str, **kwargs):
             logger.debug('Edit skipped (not modified) for message id %s', getattr(message, 'message_id', None))
             return
         logger.exception('TelegramBadRequest on edit_text: %s', e)
-    except Exception as e:
-        logger.exception('Unexpected error while editing message: %s', e)
 
 
 async def get_user_language(user_id: int) -> str:
@@ -138,9 +128,9 @@ async def admin_question_text(message: types.Message, state: FSMContext):
     await state.update_data(question_text=message.text.strip())
     # Спрашиваем тип вопроса
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Одиночный (single)", callback_data="qtype_single")],
-        [InlineKeyboardButton(text="Множественный (multiple)", callback_data="qtype_multiple")],
-        [InlineKeyboardButton(text="Текстовый (text)", callback_data="qtype_text")]
+        [InlineKeyboardButton(text="Несколько вариантов один ответ", callback_data="qtype_single")],
+        [InlineKeyboardButton(text="Несколько вариантов два ответа", callback_data="qtype_multiple")],
+        [InlineKeyboardButton(text="Текстовый ответ", callback_data="qtype_text")]
     ])
     await state.set_state(AdminQuestionCreation.question_type)
     await message.answer("Выберите тип вопроса:", reply_markup=keyboard)
@@ -165,7 +155,7 @@ async def admin_question_points(message: types.Message, state: FSMContext):
 
     try:
         pts = float(message.text.strip())
-    except Exception:
+    except ValueError:
         pts = 1.0
 
     await state.update_data(points=pts)
@@ -226,7 +216,7 @@ async def admin_question_options(message: types.Message, state: FSMContext):
         ])
         await message.answer("Вопрос сохранён.", reply_markup=keyboard)
         await state.set_state(AdminQuestionCreation.add_more)
-    except Exception as e:
+    except (ValueError, KeyError, AttributeError) as e:
         await message.answer(f"Ошибка при сохранении вопроса: {e}")
         await state.clear()
 
@@ -444,10 +434,10 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
         # Попробуем читать лист 'Questions', иначе первый лист
         try:
             df = pd.read_excel(bio, sheet_name='Questions')
-        except Exception:
+        except (KeyError, ValueError):
             bio.seek(0)
             df = pd.read_excel(bio)
-    except Exception as e:
+    except (ValueError, OSError) as e:
         await message.answer(get_text("upload_failed", lang, error=str(e)))
         await state.clear()
         return
@@ -503,7 +493,7 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
             await session.commit()
 
         await message.answer(get_text("upload_success", lang))
-    except Exception as e:
+    except (ValueError, KeyError, AttributeError) as e:
         await message.answer(get_text("upload_failed", lang, error=str(e)))
     finally:
         await state.clear()
