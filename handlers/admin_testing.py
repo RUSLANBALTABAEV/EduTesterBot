@@ -73,8 +73,8 @@ async def manage_tests(callback: types.CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=get_text("btn_create_test", lang), callback_data="create_test")],
         [InlineKeyboardButton(text="📋 Список тестов", callback_data="list_all_tests")],
-        [InlineKeyboardButton(text=get_text("btn_upload_excel", lang) if "btn_upload_excel" in [] else "📤 Загрузить тест из Excel", callback_data="upload_excel_test")],
-        [InlineKeyboardButton(text=get_text("btn_download_template", lang) if "btn_download_template" in [] else "📥 Скачать шаблон Excel", callback_data="download_excel_template")],
+        [InlineKeyboardButton(text=get_text("btn_upload_excel", lang), callback_data="upload_excel_test")],
+        [InlineKeyboardButton(text=get_text("btn_download_template", lang), callback_data="download_excel_template")],
         [InlineKeyboardButton(text=get_text("btn_add_questions", lang), callback_data="add_questions")],
         [InlineKeyboardButton(text=get_text("btn_test_results", lang), callback_data="test_results")],
         [InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="admin_menu")]
@@ -124,7 +124,7 @@ async def add_to_test_select(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(test_id=test_id)
     await state.set_state(AdminQuestionCreation.question_text)
 
-    await safe_edit(callback.message, get_text("enter_question_text", lang) if "enter_question_text" in [] else "Отправьте текст вопроса:")
+    await safe_edit(callback.message, "Отправьте текст вопроса:")
     await callback.answer()
 
 
@@ -612,7 +612,7 @@ async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(get_text("no_access", lang), show_alert=True)
         return
     
-    # Создаём тест без выбора курса (course_id = None)
+    # Создаём тест
     await state.update_data(course_id=None)
     await state.set_state(AdminTestCreation.title)
     await safe_edit(callback.message, get_text("enter_test_title", lang))

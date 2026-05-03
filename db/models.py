@@ -21,17 +21,12 @@ class User(Base, AsyncAttrs):
     phone = Column(String(20), unique=True)
     photo = Column(String(500), nullable=True)
     document = Column(String(500), nullable=True)
-    # language can be unset initially; default is None so bot can ask user to choose on first start
     language = Column(String(2), nullable=True, default=None)
     is_active = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Отношения
     test_results = relationship("TestResult", back_populates="user")
-    # enrolled_courses removed — courses feature deprecated
-
-
-# Course and CourseEnrollment removed — courses feature deprecated
 
 
 class Test(Base, AsyncAttrs):
@@ -39,7 +34,7 @@ class Test(Base, AsyncAttrs):
     __tablename__ = 'tests'
     
     id = Column(Integer, primary_key=True)
-    # course_id removed — tests are no longer tied to courses
+    
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     total_questions = Column(Integer, default=50)
@@ -50,7 +45,6 @@ class Test(Base, AsyncAttrs):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Отношения
-    # course relationship removed
     questions = relationship("Question", back_populates="test")
     results = relationship("TestResult", back_populates="test")
 

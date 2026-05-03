@@ -3,21 +3,21 @@
 from .start import start_router
 from .auth import auth_router
 from .registration import registration_router
-from .tests import tests_router  # НОВОЕ: заменяет courses
-from .my_tests import my_tests_router  # НОВОЕ: заменяет my_courses
+from .tests import tests_router 
+from .my_tests import my_tests_router
 from .testing import testing_router
 from .admin import admin_router
 from .admin_testing import admin_testing_router
-from .test_results import results_router  # НОВОЕ
+from .test_results import results_router 
 
 __all__ = [
     'start_router',
     'auth_router',
     'registration_router',
-    'tests_router',  # ИЗМЕНЕНО
-    'my_tests_router',  # ИЗМЕНЕНО
+    'tests_router', 
+    'my_tests_router',
     'testing_router',
     'admin_router',
     'admin_testing_router',
-    'results_router',  # НОВОЕ
+    'results_router',
 ]

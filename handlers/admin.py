@@ -1,7 +1,7 @@
 # handlers/admin.py
 """
 Обработчики административной панели бота.
-Управление пользователями и тестами (без курсов).
+Управление пользователями и тестами.
 """
 from aiogram import Router, F
 from aiogram.types import (

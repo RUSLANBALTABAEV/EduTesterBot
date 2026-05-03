@@ -128,7 +128,6 @@ async def view_result_detail(callback: types.CallbackQuery) -> None:
         
         text = "📊 <b>Детали результата</b>\n\n"
         
-        # Курс больше не отображается
         
         if test:
             text += f"📝 <b>Тест:</b> {test.title}\n"
@@ -200,13 +199,11 @@ async def save_result(callback: types.CallbackQuery) -> None:
         )
         user = user_query.scalar_one_or_none()
         
-        # Получаем тест и курс
+        # Получаем тест
         test_query = await session.execute(
             select(Test).where(Test.id == result.test_id)
         )
         test = test_query.scalar_one_or_none()
-        
-        # Курс удалён из текстового файла результата — не добавляем его
         
         # Формируем текст для сохранения
         percentage = (result.score / result.max_score * 100) if result.max_score > 0 else 0
