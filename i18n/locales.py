@@ -25,6 +25,7 @@ TRANSLATIONS = {
 
         # Кнопки главного меню
         "btn_start": "Старт",
+        "btn_list_of_tests": "📋 Список тестов",
         "btn_registration": "Регистрация",
         "btn_auth": "Авторизация",
         "btn_tests": "Тесты",
@@ -88,6 +89,7 @@ TRANSLATIONS = {
         # Администратор
         "no_access": "⛔ Нет доступа.",
         "btn_show_users": "👥 Список пользователей",
+        "btn_show_list_of_tests": "📋 Список тестов:",
         "btn_manage_tests": "📋 Управление тестами",
         "btn_delete_all_users": "🗑 Удалить всех пользователей",
         "btn_create_test": "➕ Создать тест",
@@ -204,6 +206,7 @@ TRANSLATIONS = {
         "no_access": "⛔ Access denied.",
         "btn_show_users": "👥 Users list",
         "btn_manage_tests": "📋 Manage tests",
+        "btn_list_of_tests": "📋 List of tests",
         "btn_delete_all_users": "🗑 Delete all users",
         "btn_create_test": "➕ Create test",
         "btn_add_questions": "📝 Add questions",
@@ -261,6 +264,7 @@ TRANSLATIONS = {
         "btn_tests": "Testlar",
         "btn_my_tests": "Mening testlarim",
         "btn_my_results": "📊 Mening natijalarim",
+        "btn_list_of_tests": "📋 Testlar ro'yxati",
         "btn_admin_panel": "Testlarni boshqarish",
         "btn_logout": "Chiqish",
         "btn_language": "🌐 Til",

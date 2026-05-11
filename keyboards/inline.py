@@ -32,10 +32,10 @@ def course_keyboard(courses, lang: str = "ru") -> InlineKeyboardMarkup:
 
 def enrollment_keyboard(course_id: int, is_enrolled: bool, lang: str = "ru") -> InlineKeyboardMarkup:
     """
-    Создать клавиатуру для записи на курс.
+    Создать клавиатуру для записи на тест.
     
     Args:
-        course_id: ID курса
+        course_id: ID тест
         is_enrolled: Записан ли пользователь
         lang: Язык
         

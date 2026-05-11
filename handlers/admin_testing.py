@@ -72,7 +72,7 @@ async def manage_tests(callback: types.CallbackQuery):
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=get_text("btn_create_test", lang), callback_data="create_test")],
-        [InlineKeyboardButton(text="📋 Список тестов", callback_data="list_all_tests")],
+        [InlineKeyboardButton(text=get_text("btn_list_of_tests", lang), callback_data="list_all_tests")],
         [InlineKeyboardButton(text=get_text("btn_upload_excel", lang), callback_data="upload_excel_test")],
         [InlineKeyboardButton(text=get_text("btn_download_template", lang), callback_data="download_excel_template")],
         [InlineKeyboardButton(text=get_text("btn_add_questions", lang), callback_data="add_questions")],
@@ -1022,7 +1022,7 @@ async def list_all_tests(callback: types.CallbackQuery):
         for test in tests
     ] + [[InlineKeyboardButton(text=get_text("btn_back", lang), callback_data="manage_tests")]])
 
-    await safe_edit(callback.message, "📋 Список тестов:", reply_markup=keyboard)
+    await safe_edit(callback.message, text=get_text("btn_show_list_of_tests", lang), reply_markup=keyboard)
     await callback.answer()
 
 
