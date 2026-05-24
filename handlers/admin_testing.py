@@ -616,15 +616,15 @@ async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
 
 @admin_testing_router.callback_query(F.data == "upload_excel_test")
 async def upload_excel_start(callback: types.CallbackQuery, state: FSMContext):
-    """Начать загрузку теста из Excel: переходим к созданию теста с последующей загрузкой."""
+    """Начать загрузку теста из Excel."""
     lang = await get_user_language(callback.from_user.id)
 
     if callback.from_user.id != ADMIN_ID:
         await callback.answer(get_text("no_access", lang), show_alert=True)
         return
 
-    # Устанавливаем флаг, что после создания теста потребуется загрузка файла
-    await state.update_data(upload_mode=True)
+    # Устанавливаем флаг и тип загрузки
+    await state.update_data(upload_mode=True, upload_type='excel')
     await state.set_state(AdminTestCreation.title)
     await safe_edit(callback.message, get_text("enter_test_title", lang))
     await callback.answer()
@@ -639,7 +639,8 @@ async def upload_word_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(get_text("no_access", lang), show_alert=True)
         return
 
-    await state.update_data(upload_mode=True)
+    # Устанавливаем флаг и тип загрузки
+    await state.update_data(upload_mode=True, upload_type='word')
     await state.set_state(AdminTestCreation.title)
     await safe_edit(callback.message, get_text("enter_test_title", lang))
     await callback.answer()
@@ -791,7 +792,11 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
         elif file_ext == 'docx':
             await process_word_upload(bio, created_test_id, message, lang)
         elif file_ext == 'doc':
-            await message.answer("⚠️ Файлы .doc (Word 97-2003) не поддерживаются. Пожалуйста, сохраните документ в формате .docx и повторите попытку.")
+            await message.answer(
+                "⚠️ **Файлы формата .doc (Word 97-2003) не поддерживаются.**\n\n"
+                "Пожалуйста, откройте файл в Word, нажмите «Файл» → «Сохранить как» и выберите формат **.docx**.\n"
+                "После этого загрузите полученный .docx файл."
+            )
         else:
             await message.answer(f"❌ Неподдерживаемый формат файла: .{file_ext}. Разрешены .xlsx, .docx")
     except Exception as e:
@@ -870,16 +875,33 @@ async def process_word_upload(bio: io.BytesIO, test_id: int, message: types.Mess
     """Обработать .docx файл с таблицей вопросов."""
     doc = DocxDocument(bio)
     tables = doc.tables
+    
     if not tables:
-        await message.answer("⚠️ В документе не найдено ни одной таблицы. Ожидается таблица с колонками: question, type, points, options.")
+        await message.answer(
+            "⚠️ В документе не найдено ни одной таблицы.\n\n"
+            "📌 **Инструкция для Word:**\n"
+            "1. Вставьте таблицу (Вставка → Таблица).\n"
+            "2. В первой строке укажите заголовки колонок: **question**, **type**, **points**, **options**.\n"
+            "3. В колонке 'options' варианты разделяйте через '||', правильный ответ помечайте '*'.\n"
+            "4. Сохраните файл как .docx и загрузите заново."
+        )
         return
 
     table = tables[0]
+    if len(table.rows) < 2:
+        await message.answer(
+            "⚠️ Таблица должна содержать как минимум строку заголовка и одну строку с вопросом."
+        )
+        return
+
     # Извлекаем заголовки из первой строки
     headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
     required = {'question'}
     if not required.issubset(set(headers)):
-        await message.answer("⚠️ Таблица должна содержать как минимум колонку 'question' (регистр не важен).")
+        await message.answer(
+            "⚠️ Таблица должна содержать как минимум колонку 'question'.\n"
+            f"Найдены колонки: {', '.join(headers)}"
+        )
         return
 
     # Преобразуем строки таблицы в список словарей
@@ -888,8 +910,14 @@ async def process_word_upload(bio: io.BytesIO, test_id: int, message: types.Mess
         cells = [cell.text.strip() for cell in row.cells]
         if not any(cells):  # пустая строка
             continue
-        row_dict = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
+        row_dict = {}
+        for i in range(min(len(headers), len(cells))):
+            row_dict[headers[i]] = cells[i]
         rows_data.append(row_dict)
+
+    if not rows_data:
+        await message.answer("⚠️ Нет данных для импорта. Проверьте, что строки не пустые.")
+        return
 
     async with async_session() as session:
         test = await session.get(Test, test_id)
@@ -989,7 +1017,30 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
     # Если был выбран режим загрузки из Excel/Word — попросить файл
     if data.get('upload_mode'):
         await state.update_data(created_test_id=test.id)
-        await safe_edit(callback.message, get_text("test_created", lang, title=data['title']) + "\n" + get_text("send_excel_file", lang))
+        
+        # Определяем тип загрузки
+        upload_type = data.get('upload_type', 'excel')
+        
+        if upload_type == 'word':
+            msg = (
+                f"✅ Тест '{data['title']}' создан!\n\n"
+                "**Отправьте файл Word (.docx) с вопросами**\n\n"
+                "📌 **Инструкция:**\n"
+                "В файле должна быть таблица с колонками:\n"
+                "- question\n"
+                "- type (single, multiple, text)\n"
+                "- points (баллы)\n"
+                "- options (варианты через '||', правильный — со '*')\n\n"
+                "Пример строки таблицы:\n"
+                "| Какой язык? | single | 1 | *Python||Java||C++ |"
+            )
+            await safe_edit(callback.message, msg)
+        else:
+            await safe_edit(
+                callback.message, 
+                get_text("test_created", lang, title=data['title']) + "\n" + get_text("send_excel_file", lang)
+            )
+            
         await state.set_state(AdminTestCreation.upload_file)
         await callback.answer()
         return
