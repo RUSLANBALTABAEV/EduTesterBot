@@ -18,6 +18,7 @@ from aiogram.types import (
 )
 import pandas as pd
 from sqlalchemy import select
+from docx import Document as DocxDocument
 
 from db.models import Test, Question, Option, TestResult, User
 from db.session import async_session
@@ -59,9 +60,6 @@ async def get_user_language(user_id: int) -> str:
 async def manage_tests(callback: types.CallbackQuery):
     """
     Управление тестами.
-    
-    Args:
-        callback: Callback query
     """
     if callback.from_user.id != ADMIN_ID:
         lang = await get_user_language(callback.from_user.id)
@@ -74,6 +72,7 @@ async def manage_tests(callback: types.CallbackQuery):
         [InlineKeyboardButton(text=get_text("btn_create_test", lang), callback_data="create_test")],
         [InlineKeyboardButton(text=get_text("btn_list_of_tests", lang), callback_data="list_all_tests")],
         [InlineKeyboardButton(text=get_text("btn_upload_excel", lang), callback_data="upload_excel_test")],
+        [InlineKeyboardButton(text="📄 Загрузить тест из Word", callback_data="upload_word_test")],
         [InlineKeyboardButton(text=get_text("btn_download_template", lang), callback_data="download_excel_template")],
         [InlineKeyboardButton(text=get_text("btn_add_questions", lang), callback_data="add_questions")],
         [InlineKeyboardButton(text=get_text("btn_test_results", lang), callback_data="test_results")],
@@ -601,10 +600,6 @@ async def admin_add_more_no(callback: types.CallbackQuery, state: FSMContext):
 async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
     """
     Начать создание теста.
-    
-    Args:
-        callback: Callback query
-        state: FSM контекст
     """
     lang = await get_user_language(callback.from_user.id)
 
@@ -620,29 +615,39 @@ async def create_test_start(callback: types.CallbackQuery, state: FSMContext):
 
 
 @admin_testing_router.callback_query(F.data == "upload_excel_test")
-async def upload_excel_start(callback: types.CallbackQuery):
-    """Начать загрузку теста из Excel: выбрать курс."""
+async def upload_excel_start(callback: types.CallbackQuery, state: FSMContext):
+    """Начать загрузку теста из Excel: переходим к созданию теста с последующей загрузкой."""
     lang = await get_user_language(callback.from_user.id)
 
     if callback.from_user.id != ADMIN_ID:
         await callback.answer(get_text("no_access", lang), show_alert=True)
         return
 
-    # Переходим к загрузке Excel без привязки к курсу
-    # Тест будет создан с course_id = None
+    # Устанавливаем флаг, что после создания теста потребуется загрузка файла
+    await state.update_data(upload_mode=True)
+    await state.set_state(AdminTestCreation.title)
+    await safe_edit(callback.message, get_text("enter_test_title", lang))
+    await callback.answer()
+
+
+@admin_testing_router.callback_query(F.data == "upload_word_test")
+async def upload_word_start(callback: types.CallbackQuery, state: FSMContext):
+    """Начать загрузку теста из Word."""
+    lang = await get_user_language(callback.from_user.id)
+
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer(get_text("no_access", lang), show_alert=True)
+        return
+
+    await state.update_data(upload_mode=True)
+    await state.set_state(AdminTestCreation.title)
     await safe_edit(callback.message, get_text("enter_test_title", lang))
     await callback.answer()
 
 
 @admin_testing_router.message(AdminTestCreation.title)
 async def set_test_title(message: types.Message, state: FSMContext):
-    """
-    Установить название теста.
-    
-    Args:
-        message: Сообщение
-        state: FSM контекст
-    """
+    """Установить название теста."""
     lang = await get_user_language(message.from_user.id)
 
     if message.from_user.id != ADMIN_ID:
@@ -655,13 +660,7 @@ async def set_test_title(message: types.Message, state: FSMContext):
 
 @admin_testing_router.message(AdminTestCreation.description)
 async def set_test_description(message: types.Message, state: FSMContext):
-    """
-    Установить описание теста.
-    
-    Args:
-        message: Сообщение
-        state: FSM контекст
-    """
+    """Установить описание теста."""
     lang = await get_user_language(message.from_user.id)
 
     if message.from_user.id != ADMIN_ID:
@@ -675,13 +674,7 @@ async def set_test_description(message: types.Message, state: FSMContext):
 
 @admin_testing_router.message(AdminTestCreation.total_questions)
 async def set_total_questions(message: types.Message, state: FSMContext):
-    """
-    Установить количество вопросов.
-    
-    Args:
-        message: Сообщение
-        state: FSM контекст
-    """
+    """Установить количество вопросов."""
     lang = await get_user_language(message.from_user.id)
 
     if message.from_user.id != ADMIN_ID:
@@ -699,13 +692,7 @@ async def set_total_questions(message: types.Message, state: FSMContext):
 
 @admin_testing_router.message(AdminTestCreation.time_limit)
 async def set_time_limit(message: types.Message, state: FSMContext):
-    """
-    Установить лимит времени.
-    
-    Args:
-        message: Сообщение
-        state: FSM контекст
-    """
+    """Установить лимит времени."""
     lang = await get_user_language(message.from_user.id)
 
     if message.from_user.id != ADMIN_ID:
@@ -723,13 +710,7 @@ async def set_time_limit(message: types.Message, state: FSMContext):
 
 @admin_testing_router.message(AdminTestCreation.scheduled_time)
 async def set_scheduled_time(message: types.Message, state: FSMContext):
-    """
-    Установить время начала теста.
-    
-    Args:
-        message: Сообщение
-        state: FSM контекст
-    """
+    """Установить время начала теста."""
     lang = await get_user_language(message.from_user.id)
 
     if message.from_user.id != ADMIN_ID:
@@ -771,7 +752,7 @@ async def set_scheduled_time(message: types.Message, state: FSMContext):
 
 @admin_testing_router.message(AdminTestCreation.upload_file, F.content_type.in_({"document"}))
 async def handle_upload_file(message: types.Message, state: FSMContext):
-    """Обработать загруженный Excel-файл и создать вопросы."""
+    """Обработать загруженный файл (Excel или Word) и создать вопросы."""
     lang = await get_user_language(message.from_user.id)
 
     data = await state.get_data()
@@ -779,48 +760,72 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
     if not created_test_id:
         await message.answer(get_text("upload_failed", lang, error="test id missing in state"))
         await state.clear()
-        # Показываем главное меню администратора
         await message.answer(
             "👤 Главное меню администратора:",
             reply_markup=main_menu(message.from_user.id, lang)
         )
         return
 
-    # Скачать файл в память
+    # Получаем имя файла
+    file_name = getattr(message.document, 'file_name', '')
+    if not file_name:
+        await message.answer("Не удалось определить имя файла.")
+        await state.clear()
+        return
+
+    file_ext = file_name.lower().split('.')[-1]
+
+    # Скачиваем файл в память
     bio = io.BytesIO()
     try:
         await message.document.download(destination=bio)
         bio.seek(0)
-        # Попробуем читать лист 'Questions', иначе первый лист
-        try:
-            df = pd.read_excel(bio, sheet_name='Questions')
-        except (KeyError, ValueError):
-            bio.seek(0)
-            df = pd.read_excel(bio)
-    except (ValueError, OSError) as e:
+    except Exception as e:
         await message.answer(get_text("upload_failed", lang, error=str(e)))
         await state.clear()
-        # Показываем главное меню администратора
+        return
+
+    try:
+        if file_ext in ('xlsx', 'xls'):
+            await process_excel_upload(bio, created_test_id, message, lang)
+        elif file_ext == 'docx':
+            await process_word_upload(bio, created_test_id, message, lang)
+        elif file_ext == 'doc':
+            await message.answer("⚠️ Файлы .doc (Word 97-2003) не поддерживаются. Пожалуйста, сохраните документ в формате .docx и повторите попытку.")
+        else:
+            await message.answer(f"❌ Неподдерживаемый формат файла: .{file_ext}. Разрешены .xlsx, .docx")
+    except Exception as e:
+        await message.answer(get_text("upload_failed", lang, error=str(e)))
+    finally:
+        await state.clear()
         await message.answer(
             "👤 Главное меню администратора:",
             reply_markup=main_menu(message.from_user.id, lang)
         )
-        return
 
-    # Ожидаемые колонки: question, type, points, options
+
+async def process_excel_upload(bio: io.BytesIO, test_id: int, message: types.Message, lang: str):
+    """Обработать Excel-файл и создать вопросы."""
+    try:
+        df = pd.read_excel(bio, sheet_name='Questions')
+    except (KeyError, ValueError):
+        bio.seek(0)
+        df = pd.read_excel(bio)
+
+    # Нормализуем колонки
     required = {'question'}
-    if not required.issubset(set(df.columns.str.lower())):
-        # попытка нормализовать: сколько есть
-        pass
+    cols_lower = [c.lower() for c in df.columns]
+    if not required.issubset(set(cols_lower)):
+        await message.answer(get_text("upload_failed", lang, error="Отсутствует обязательная колонка 'question'"))
+        return
 
     try:
         async with async_session() as session:
-            test = await session.get(Test, created_test_id)
+            test = await session.get(Test, test_id)
             if not test:
                 raise RuntimeError('test not found')
 
             for idx, row in df.iterrows():
-                # нормализация колонок
                 row_data = {c.lower(): row[c] for c in df.columns}
                 q_text = str(row_data.get('question') or row_data.get('text') or '').strip()
                 if not q_text:
@@ -856,17 +861,76 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
                     session.add(option)
 
             await session.commit()
-
         await message.answer(get_text("upload_success", lang))
-    except (ValueError, KeyError, AttributeError) as e:
+    except Exception as e:
         await message.answer(get_text("upload_failed", lang, error=str(e)))
-    finally:
-        await state.clear()
-        # Показываем главное меню администратора
-        await message.answer(
-            "👤 Главное меню администратора:",
-            reply_markup=main_menu(message.from_user.id, lang)
-        )
+
+
+async def process_word_upload(bio: io.BytesIO, test_id: int, message: types.Message, lang: str):
+    """Обработать .docx файл с таблицей вопросов."""
+    doc = DocxDocument(bio)
+    tables = doc.tables
+    if not tables:
+        await message.answer("⚠️ В документе не найдено ни одной таблицы. Ожидается таблица с колонками: question, type, points, options.")
+        return
+
+    table = tables[0]
+    # Извлекаем заголовки из первой строки
+    headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
+    required = {'question'}
+    if not required.issubset(set(headers)):
+        await message.answer("⚠️ Таблица должна содержать как минимум колонку 'question' (регистр не важен).")
+        return
+
+    # Преобразуем строки таблицы в список словарей
+    rows_data = []
+    for row in table.rows[1:]:  # пропускаем заголовок
+        cells = [cell.text.strip() for cell in row.cells]
+        if not any(cells):  # пустая строка
+            continue
+        row_dict = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
+        rows_data.append(row_dict)
+
+    async with async_session() as session:
+        test = await session.get(Test, test_id)
+        if not test:
+            raise RuntimeError('test not found')
+
+        for idx, row_data in enumerate(rows_data):
+            q_text = row_data.get('question', '').strip()
+            if not q_text:
+                continue
+            q_type = row_data.get('type', 'single').strip()
+            try:
+                points = float(row_data.get('points', '1'))
+            except ValueError:
+                points = 1.0
+
+            question = Question(
+                test_id=test.id,
+                text=q_text,
+                question_type=q_type,
+                points=points,
+                order_num=idx + 1
+            )
+            session.add(question)
+            await session.flush()
+
+            options_raw = row_data.get('options', '')
+            for opt in options_raw.split('||'):
+                opt = opt.strip()
+                if not opt:
+                    continue
+                is_correct = False
+                opt_text = opt
+                if opt.startswith('*'):
+                    is_correct = True
+                    opt_text = opt.lstrip('*').strip()
+                option = Option(question_id=question.id, text=opt_text, is_correct=is_correct)
+                session.add(option)
+
+        await session.commit()
+    await message.answer(get_text("upload_success", lang))
 
 
 @admin_testing_router.callback_query(F.data == "download_excel_template")
@@ -900,13 +964,7 @@ async def download_excel_template(callback: types.CallbackQuery):
 
 @admin_testing_router.callback_query(F.data == "confirm_test", AdminTestCreation.confirm)
 async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext):
-    """
-    Подтвердить создание теста.
-    
-    Args:
-        callback: Callback query
-        state: FSM контекст
-    """
+    """Подтвердить создание теста."""
     lang = await get_user_language(callback.from_user.id)
 
     if callback.from_user.id != ADMIN_ID:
@@ -926,12 +984,10 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
         )
         session.add(test)
         await session.commit()
-        # refresh id
         await session.refresh(test)
 
-    # Если был выбран режим загрузки из Excel — попросить файл
+    # Если был выбран режим загрузки из Excel/Word — попросить файл
     if data.get('upload_mode'):
-        # сохраняем id созданного теста в state
         await state.update_data(created_test_id=test.id)
         await safe_edit(callback.message, get_text("test_created", lang, title=data['title']) + "\n" + get_text("send_excel_file", lang))
         await state.set_state(AdminTestCreation.upload_file)
@@ -940,7 +996,6 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
 
     await safe_edit(callback.message, get_text("test_created", lang, title=data['title']))
     await state.clear()
-    # Показываем главное меню администратора
     await callback.message.answer(
         "👤 Главное меню администратора:",
         reply_markup=main_menu(callback.from_user.id, lang)
@@ -950,17 +1005,10 @@ async def confirm_test_creation(callback: types.CallbackQuery, state: FSMContext
 
 @admin_testing_router.callback_query(F.data == "cancel_test", AdminTestCreation.confirm)
 async def cancel_test_creation(callback: types.CallbackQuery, state: FSMContext):
-    """
-    Отменить создание теста.
-    
-    Args:
-        callback: Callback query
-        state: FSM контекст
-    """
+    """Отменить создание теста."""
     lang = await get_user_language(callback.from_user.id)
     await state.clear()
     await callback.message.answer("❌ Создание теста отменено.")
-    # Показываем главное меню администратора
     await callback.message.answer(
         "👤 Главное меню администратора:",
         reply_markup=main_menu(callback.from_user.id, lang)
@@ -970,12 +1018,7 @@ async def cancel_test_creation(callback: types.CallbackQuery, state: FSMContext)
 
 @admin_testing_router.callback_query(F.data == "test_results")
 async def show_test_results(callback: types.CallbackQuery):
-    """
-    Показать результаты тестов.
-    
-    Args:
-        callback: Callback query
-    """
+    """Показать результаты тестов."""
     lang = await get_user_language(callback.from_user.id)
 
     if callback.from_user.id != ADMIN_ID:
@@ -983,7 +1026,6 @@ async def show_test_results(callback: types.CallbackQuery):
         return
     
     async with async_session() as session:
-        # Получаем все тесты
         tests_result = await session.execute(select(Test))
         tests = tests_result.scalars().all()
     
@@ -1120,7 +1162,6 @@ async def delete_test(callback: types.CallbackQuery):
         await session.commit()
 
     await safe_edit(callback.message, "🗑 Тест удалён")
-    # Показываем главное меню администратора
     await callback.message.answer(
         "👤 Главное меню администратора:",
         reply_markup=main_menu(callback.from_user.id, lang)
@@ -1165,7 +1206,6 @@ async def handle_edit_title(message: types.Message, state: FSMContext):
 
     await message.answer(f"✅ Название теста обновлено: {new_title}")
     await state.clear()
-    # Показываем главное меню администратора
     await message.answer(
         "👤 Главное меню администратора:",
         reply_markup=main_menu(message.from_user.id, lang)
@@ -1209,7 +1249,6 @@ async def handle_edit_description(message: types.Message, state: FSMContext):
 
     await message.answer("✅ Описание обновлено.")
     await state.clear()
-    # Показываем главное меню администратора
     await message.answer(
         "👤 Главное меню администратора:",
         reply_markup=main_menu(message.from_user.id, lang)
@@ -1218,25 +1257,18 @@ async def handle_edit_description(message: types.Message, state: FSMContext):
 
 @admin_testing_router.callback_query(F.data.startswith("test_stats_"))
 async def show_test_statistics(callback: types.CallbackQuery):
-    """
-    Показать статистику теста.
-    
-    Args:
-        callback: Callback query
-    """
+    """Показать статистику теста."""
     lang = await get_user_language(callback.from_user.id)
 
     parts = callback.data.split("_")
     test_id = int(parts[-1])
     
     async with async_session() as session:
-        # Получаем результаты теста
         results_result = await session.execute(
             select(TestResult).where(TestResult.test_id == test_id)
         )
         results = results_result.scalars().all()
         
-        # Получаем информацию о тесте
         test_result = await session.execute(
             select(Test).where(Test.id == test_id)
         )
@@ -1246,7 +1278,6 @@ async def show_test_statistics(callback: types.CallbackQuery):
             await callback.answer(get_text("no_results_for_test", lang), show_alert=True)
             return
         
-        # Статистика
         completed = [r for r in results if r.completed_at]
         avg_score = sum(r.score for r in completed) / len(completed) if completed else 0
         
@@ -1270,18 +1301,12 @@ async def show_test_statistics(callback: types.CallbackQuery):
 
 @admin_testing_router.callback_query(F.data.startswith("export_test_"))
 async def export_test_results(callback: types.CallbackQuery):
-    """
-    Экспортировать результаты теста в Excel.
-    
-    Args:
-        callback: Callback query
-    """
+    """Экспортировать результаты теста в Excel."""
     lang = await get_user_language(callback.from_user.id)
 
     test_id = int(callback.data.split("_")[2])
     
     async with async_session() as session:
-        # Получаем результаты с информацией о пользователях
         query = select(
             TestResult,
             User.name,
@@ -1299,7 +1324,6 @@ async def export_test_results(callback: types.CallbackQuery):
             await callback.answer(get_text("no_data_export", lang), show_alert=True)
             return
         
-        # Создаем DataFrame
         data = []
         for result, name, phone in rows:
             data.append({
@@ -1316,14 +1340,12 @@ async def export_test_results(callback: types.CallbackQuery):
         
         df = pd.DataFrame(data)
         
-        # Создаем Excel файл в памяти
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Результаты', index=False)
         
         output.seek(0)
         
-        # Отправляем файл
         await callback.message.bot.send_document(
             chat_id=callback.from_user.id,
             document=types.BufferedInputFile(
