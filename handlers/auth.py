@@ -32,7 +32,7 @@ async def get_user_language(user_id: int) -> str:
             select(User).where(User.user_id == user_id)
         )
         user = result.scalar_one_or_none()
-        return user.language if user and user.language else None
+        return user.language if user and user.language else "ru"
 
 
 @auth_router.message(Command("login"))
@@ -160,13 +160,13 @@ async def process_phone_number(
         if user:
             if user.user_id and user.is_active:
                 await message.answer(
-                    get_text("account_already_active", user.language),
+                    get_text("account_already_active", user.language if user.language else "ru"),
                     reply_markup=types.ReplyKeyboardRemove()
                 )
                 # Показываем главное меню после сообщения
                 await message.answer(
-                    get_text("welcome", user.language),
-                    reply_markup=main_menu(message.from_user.id, user.language)
+                    get_text("welcome", user.language if user.language else "ru"),
+                    reply_markup=main_menu(message.from_user.id, user.language if user.language else "ru")
                 )
             else:
                 user.user_id = message.from_user.id
@@ -220,11 +220,11 @@ async def logout(message: types.Message) -> None:
             user.is_active = False
             session.add(user)
             await session.commit()
-            await message.answer(get_text("logout_success", user.language))
+            await message.answer(get_text("logout_success", user.language if user.language else "ru"))
             # Показываем главное меню после выхода
             await message.answer(
-                get_text("welcome", user.language),
-                reply_markup=main_menu(message.from_user.id, user.language)
+                get_text("welcome", user.language if user.language else "ru"),
+                reply_markup=main_menu(message.from_user.id, user.language if user.language else "ru")
             )
         else:
             await message.answer(get_text("not_authorized", lang))
