@@ -18,6 +18,7 @@ from db.models import User, Test, Question, Option, TestResult
 from db.session import async_session
 from fsm.test import Testing
 from i18n.locales import get_text
+from config.bot_config import ADMIN_ID
 
 testing_router = Router()
 
@@ -554,6 +555,91 @@ async def skip_question(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+async def send_results_to_admin(bot: types.Bot, user_id: int, test_result_id: int):
+    """
+    Отправить результаты теста администратору.
+    
+    Args:
+        bot: Экземпляр бота
+        user_id: ID пользователя в БД
+        test_result_id: ID результата теста
+    """
+    if not ADMIN_ID:
+        logger.warning("ADMIN_ID не установлен в конфигурации")
+        return
+    
+    try:
+        async with async_session() as session:
+            # Получаем результат теста
+            result_query = await session.execute(
+                select(TestResult).where(TestResult.id == test_result_id)
+            )
+            result = result_query.scalar_one_or_none()
+            
+            if not result:
+                logger.error("TestResult %s not found", test_result_id)
+                return
+            
+            # Получаем информацию о пользователе
+            user_query = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = user_query.scalar_one_or_none()
+            
+            if not user:
+                logger.error("User %s not found", user_id)
+                return
+            
+            # Получаем информацию о тесте
+            test_query = await session.execute(
+                select(Test).where(Test.id == result.test_id)
+            )
+            test = test_query.scalar_one_or_none()
+            
+            # Подсчитываем процент и оценку
+            percentage = (result.score / result.max_score * 100) if result.max_score > 0 else 0
+            grade = get_grade(percentage)
+            
+            # Форматируем время прохождения
+            duration_text = ""
+            if result.started_at:
+                duration = result.completed_at - result.started_at
+                minutes = duration.seconds // 60
+                seconds = duration.seconds % 60
+                duration_text = f"⏱ <b>Время прохождения:</b> {minutes} мин {seconds} сек\n"
+            
+            # Формируем сообщение для администратора
+            admin_message = (
+                "📊 <b>НОВЫЙ РЕЗУЛЬТАТ ТЕСТИРОВАНИЯ</b>\n\n"
+                f"👤 <b>Студент:</b> {user.name}\n"
+                f"📱 <b>Телефон:</b> {user.phone}\n"
+            )
+            
+            if test:
+                admin_message += f"📝 <b>Тест:</b> {test.title}\n\n"
+            
+            admin_message += (
+                f"📈 <b>Результаты:</b>\n"
+                f"• Баллы: {result.score:.1f} из {result.max_score}\n"
+                f"• Процент: {percentage:.1f}%\n"
+                f"• Оценка: {grade}\n"
+                f"• Дата: {result.completed_at.strftime('%d.%m.%Y в %H:%M')}\n"
+                f"{duration_text}"
+            )
+            
+            # Отправляем сообщение администратору
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=admin_message,
+                parse_mode="HTML"
+            )
+            
+            logger.info(f"Результаты теста отправлены администратору (test_result_id={test_result_id})")
+            
+    except Exception as e:
+        logger.exception(f"Ошибка при отправке результатов администратору: {e}")
+
+
 async def complete_test(message: types.Message, state: FSMContext, lang: str = "ru"):
     """
     Завершить тест и подсчитать результаты.
@@ -620,10 +706,12 @@ async def complete_test(message: types.Message, state: FSMContext, lang: str = "
                     total_score += float(question.points) * len(selected_set) / len(correct_options)
         
         test_result = await session.get(TestResult, test_result_id)
+        user_id = None
         if test_result:
             test_result.score = total_score
             test_result.completed_at = datetime.now()
             test_result.answers_data = json.dumps(answers)
+            user_id = test_result.user_id
             await session.commit()
         else:
             logger.error("TestResult %s not found", test_result_id)
@@ -651,6 +739,10 @@ async def complete_test(message: types.Message, state: FSMContext, lang: str = "
         except TelegramBadRequest as e:
             logger.debug("Could not edit message: %s", e)
             await message.answer(text, parse_mode="HTML")
+    
+    # Отправляем результаты администратору
+    if user_id:
+        await send_results_to_admin(message.bot, user_id, test_result_id)
     
     await state.clear()
 
