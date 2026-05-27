@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from aiogram import Router, F, types
+from aiogram import Router, F, types, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -555,7 +555,7 @@ async def skip_question(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def send_results_to_admin(bot: types.Bot, user_id: int, test_result_id: int):
+async def send_results_to_admin(bot: Bot, user_id: int, test_result_id: int):
     """
     Отправить результаты теста администратору.
     
