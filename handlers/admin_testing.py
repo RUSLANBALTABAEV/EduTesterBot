@@ -26,6 +26,7 @@ from fsm.test import AdminTestCreation, AdminQuestionCreation, AdminTestEdit
 from config.bot_config import ADMIN_ID
 from i18n.locales import get_text
 from keyboards.reply import main_menu
+from utils.word_parser import WordTestParser
 
 admin_testing_router = Router()
 
@@ -779,7 +780,9 @@ async def handle_upload_file(message: types.Message, state: FSMContext):
     # Скачиваем файл в память
     bio = io.BytesIO()
     try:
-        await message.document.download(destination=bio)
+        # Правильный способ для Aiogram 3.x
+        file = await message.bot.get_file(message.document.file_id)
+        await message.bot.download_file(file.file_path, bio)
         bio.seek(0)
     except Exception as e:
         await message.answer(get_text("upload_failed", lang, error=str(e)))
@@ -872,37 +875,48 @@ async def process_excel_upload(bio: io.BytesIO, test_id: int, message: types.Mes
 
 
 async def process_word_upload(bio: io.BytesIO, test_id: int, message: types.Message, lang: str):
-    """Обработать .docx файл с таблицей вопросов."""
+    """
+    Обработать .docx файл с вопросами.
+    
+    Поддерживаются два формата:
+    1. Таблица с колонками: question, type, points, options
+    2. Текстовый формат:
+       N. Текст вопроса
+       A) Вариант 1
+       B) Вариант 2
+       C) Вариант 3
+       D) Вариант 4
+    """
     doc = DocxDocument(bio)
     tables = doc.tables
     
-    if not tables:
-        await message.answer(
-            "⚠️ В документе не найдено ни одной таблицы.\n\n"
-            "📌 **Инструкция для Word:**\n"
-            "1. Вставьте таблицу (Вставка → Таблица).\n"
-            "2. В первой строке укажите заголовки колонок: **question**, **type**, **points**, **options**.\n"
-            "3. В колонке 'options' варианты разделяйте через '||', правильный ответ помечайте '*'.\n"
-            "4. Сохраните файл как .docx и загрузите заново."
-        )
-        return
+    # Сначала проверяем наличие таблицы
+    if tables and len(tables) > 0:
+        # Пытаемся обработать как таблицу
+        success = await process_word_table_format(bio, test_id, message, lang, tables)
+        if success:
+            return
+    
+    # Если таблицы нет или она не в ожидаемом формате, пытаемся обработать как текстовый формат
+    await process_word_text_format(bio, test_id, message, lang)
 
+
+async def process_word_table_format(bio: io.BytesIO, test_id: int, message: types.Message, lang: str, tables) -> bool:
+    """
+    Обработать Word документ в формате таблицы.
+    
+    Returns:
+        True если успешно обработано, False если таблица не в ожидаемом формате
+    """
     table = tables[0]
     if len(table.rows) < 2:
-        await message.answer(
-            "⚠️ Таблица должна содержать как минимум строку заголовка и одну строку с вопросом."
-        )
-        return
+        return False
 
     # Извлекаем заголовки из первой строки
     headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
     required = {'question'}
     if not required.issubset(set(headers)):
-        await message.answer(
-            "⚠️ Таблица должна содержать как минимум колонку 'question'.\n"
-            f"Найдены колонки: {', '.join(headers)}"
-        )
-        return
+        return False
 
     # Преобразуем строки таблицы в список словарей
     rows_data = []
@@ -916,8 +930,7 @@ async def process_word_upload(bio: io.BytesIO, test_id: int, message: types.Mess
         rows_data.append(row_dict)
 
     if not rows_data:
-        await message.answer("⚠️ Нет данных для импорта. Проверьте, что строки не пустые.")
-        return
+        return False
 
     async with async_session() as session:
         test = await session.get(Test, test_id)
@@ -958,7 +971,83 @@ async def process_word_upload(bio: io.BytesIO, test_id: int, message: types.Mess
                 session.add(option)
 
         await session.commit()
+    
     await message.answer(get_text("upload_success", lang))
+    return True
+
+
+async def process_word_text_format(bio: io.BytesIO, test_id: int, message: types.Message, lang: str):
+    """
+    Обработать Word документ в текстовом формате.
+    
+    Формат:
+    N. Текст вопроса
+    A) Вариант ответа
+    B) Вариант ответа
+    C) Вариант ответа
+    D) Вариант ответа
+    """
+    try:
+        # Используем WordTestParser для парсинга
+        bio.seek(0)
+        parser = WordTestParser(bio)
+        questions = parser.parse()
+        
+        if not questions:
+            await message.answer(
+                "⚠️ В документе не найдены вопросы в требуемом формате.\n\n"
+                "📌 **Поддерживаемые форматы:**\n\n"
+                "**Формат 1 - Текстовый (рекомендуется):**\n"
+                "1. Текст вопроса\n"
+                "A) Вариант 1\n"
+                "B) Вариант 2\n"
+                "C) Вариант 3\n"
+                "D) Вариант 4\n\n"
+                "**Формат 2 - Таблица:**\n"
+                "Колонки: question | type | points | options\n"
+                "options: *Правильный||Неправильный"
+            )
+            return
+        
+        # Сохраняем вопросы в БД
+        async with async_session() as session:
+            test = await session.get(Test, test_id)
+            if not test:
+                raise RuntimeError('test not found')
+
+            for idx, q in enumerate(questions):
+                question = Question(
+                    test_id=test.id,
+                    text=q['text'],
+                    question_type=q['type'],
+                    points=q['points'],
+                    order_num=q['order_num'] if 'order_num' in q else idx + 1
+                )
+                session.add(question)
+                await session.flush()
+
+                # Добавляем варианты ответов
+                for opt in q['options']:
+                    option = Option(
+                        question_id=question.id,
+                        text=opt['text'],
+                        is_correct=opt['is_correct']
+                    )
+                    session.add(option)
+
+            await session.commit()
+
+        await message.answer(
+            f"✅ **Тест успешно загружен!**\n\n"
+            f"📊 Загружено вопросов: {len(questions)}"
+        )
+        
+    except Exception as e:
+        logger.exception("Error processing word text format: %s", e)
+        await message.answer(
+            f"⚠️ Ошибка при обработке документа: {str(e)}\n\n"
+            "Пожалуйста, проверьте формат файла и попробуйте снова."
+        )
 
 
 @admin_testing_router.callback_query(F.data == "download_excel_template")
